@@ -1,0 +1,74 @@
+[
+  {
+    "name": "ui-tap",
+    "seconds": 1,
+    "prompt": "Short soft UI tap click, like a fingertip tapping a small plastic button, dry and close",
+    "event": "uiTap"
+  },
+  {
+    "name": "rotate-start",
+    "seconds": 1,
+    "prompt": "Quick smooth whoosh of a heavy stone tower starting to rotate on its axis, low friction rumble",
+    "event": "rotateStart"
+  },
+  {
+    "name": "fall-start",
+    "seconds": 1,
+    "prompt": "Airy descending whoosh of a small ball beginning to fall through open air",
+    "event": "fallStart"
+  },
+  {
+    "name": "pass-through",
+    "seconds": 1,
+    "prompt": "Bright ascending chime ping as a ball slips cleanly through a gap in a metal platform",
+    "event": "passThrough"
+  },
+  {
+    "name": "land",
+    "seconds": 1,
+    "prompt": "Solid rubbery thud of a bouncing ball landing on a hard wooden platform",
+    "event": "land"
+  },
+  {
+    "name": "smash",
+    "seconds": 2,
+    "prompt": "Crunchy shattering crash of a heavy ball smashing straight through a brittle glass platform",
+    "event": "smash"
+  },
+  {
+    "name": "danger-hit",
+    "seconds": 2,
+    "prompt": "Harsh metallic alarm clang with a low thud, a ball striking a red hot danger sector",
+    "event": "danger"
+  },
+  {
+    "name": "invalid",
+    "seconds": 1,
+    "prompt": "Short dull error buzz, a denied action on a mechanical switch",
+    "event": "invalid"
+  },
+  {
+    "name": "undo",
+    "seconds": 1,
+    "prompt": "Quick reverse tape rewind swoosh, a brief backwards zip",
+    "event": "undo"
+  },
+  {
+    "name": "stage-win",
+    "seconds": 3,
+    "prompt": "Short triumphant rising brass fanfare, four bright notes, stage complete celebration",
+    "event": "win"
+  },
+  {
+    "name": "countdown",
+    "seconds": 1,
+    "prompt": "Single clean electronic countdown beep, high and precise",
+    "event": "countdown"
+  },
+  {
+    "name": "achievement",
+    "seconds": 2,
+    "prompt": "Sparkling two-note magical unlock chime with a shimmering glockenspiel tail",
+    "event": "achievement"
+  }
+]

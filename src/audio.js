@@ -1,5 +1,7 @@
 /*
- * Spiral Drop — audio: WebAudio procedural synth, no assets.
+ * Spiral Drop — audio: WebAudio procedural synth plus authored one-shot
+ * samples (sfx/*.opus) that are lazy-fetched after the user-gesture unlock;
+ * synthesis remains the fallback while a clip loads or fails.
  * Buses: music / effects / ambience / voice, independent gains.
  * Short transients are tied to logical game events; variants are seeded so
  * replays sound identical. Captions are emitted through onCaption for the UI.
@@ -18,6 +20,47 @@ export function createAudio(opts) {
   let intensity = 0; // 0..1 adaptive music intensity (driven by combo/streak)
   let captionCb = null;
   let variantSeed = 1;
+  let suppressSynth = false; // true while an authored sample covers an event
+
+  // ---- authored one-shot samples (sfx/*.opus), lazy-fetched after unlock.
+  // Each event prefers its mapped clip; procedural synthesis runs only while
+  // the clip is still loading or failed to load (see sfx/manifest.json).
+  const SFX = {
+    uiTap: 'ui-tap',
+    rotateStart: 'rotate-start',
+    fallStart: 'fall-start',
+    passThrough: 'pass-through',
+    land: 'land',
+    smash: 'smash',
+    danger: 'danger-hit',
+    invalid: 'invalid',
+    undo: 'undo',
+    win: 'stage-win',
+    countdown: 'countdown',
+    achievement: 'achievement'
+  };
+  const sampleCache = new Map(); // clip -> 'loading' | AudioBuffer | null (failed)
+
+  function loadSample(clip) {
+    if (!ctx || sampleCache.has(clip)) return;
+    sampleCache.set(clip, 'loading');
+    fetch('sfx/' + clip + '.opus')
+      .then((r) => { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+      .then((ab) => ctx.decodeAudioData(ab))
+      .then((buf) => sampleCache.set(clip, buf))
+      .catch(() => sampleCache.set(clip, null));
+  }
+
+  // returns true when a decoded clip was played through the effects bus
+  function playSample(clip) {
+    const cached = sampleCache.get(clip);
+    if (!cached || cached === 'loading') return false;
+    const src = ctx.createBufferSource();
+    src.buffer = cached;
+    src.connect(buses.effects);
+    src.start();
+    return true;
+  }
 
   function ensureCtx() {
     if (ctx) return ctx;
@@ -52,7 +95,7 @@ export function createAudio(opts) {
   function caption(text) { if (captionCb) captionCb(text); }
 
   function blip(bus, freq, dur, type, gain, when, slide) {
-    if (!ensureCtx()) return;
+    if (suppressSynth || !ensureCtx()) return;
     const t = (when || ctx.currentTime);
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -67,7 +110,7 @@ export function createAudio(opts) {
   }
 
   function noiseBurst(bus, dur, gain, filterFreq, when) {
-    if (!ensureCtx()) return;
+    if (suppressSynth || !ensureCtx()) return;
     const t = when || ctx.currentTime;
     const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -184,7 +227,20 @@ export function createAudio(opts) {
       }
       return true;
     },
-    event(name, data) { if (events[name] && started && ctx && ctx.state === 'running') events[name](data); },
+    event(name, data) {
+      if (!events[name] || !started || !ctx || ctx.state !== 'running') return;
+      const clip = SFX[name];
+      if (clip) {
+        if (!sampleCache.has(clip)) loadSample(clip);
+        if (playSample(clip)) {
+          // sample covers the sound; run the handler for captions only
+          suppressSynth = true;
+          try { events[name](data); } finally { suppressSynth = false; }
+          return;
+        }
+      }
+      events[name](data);
+    },
     setIntensity(v) { intensity = Math.max(0, Math.min(1, v)); },
     setVolume(bus, v) { settings[bus] = v; applyVolumes(); },
     setMuted(m) { settings.muted = m; applyVolumes(); },
