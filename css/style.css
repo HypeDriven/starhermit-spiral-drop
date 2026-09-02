@@ -182,6 +182,8 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 /* Portrait mobile: sheet-style panels, thumb-zone tray already bottom-anchored */
 @media (max-width: 640px) {
   .panel { padding: 16px; border-radius: 16px 16px 0 0; align-self: flex-end; max-height: 82%; }
+  /* Keep the full journey grid inside the viewport: smaller cells, more columns */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
   .screen { align-items: flex-end; padding-left: 0; padding-right: 0; padding-bottom: 0; }
   .rot-btn { width: 68px; height: 68px; }
   #hud-objective { font-size: 0.82em; }
