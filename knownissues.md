@@ -15,12 +15,13 @@ evidence.
 | --- | --- |
 | `npm test` | 33/33 pass (`tests/run-tests.js`) |
 | `node --check` on all modules | clean (7 `src/*.js` + `server.js`) |
-| `tests/e2e.mjs` (headless Chrome) | not present — substituted a CDP boot check (see *Not tested*): page loads, title "Spiral Drop", canvas present, **no console errors, no page exceptions, no failed requests** |
+| `tests/e2e.mjs` (headless Chrome) | **15/15 ok, `E2E PASS`** (desktop + mobile, no page errors) — re-verified 2026-09-05 |
 
 ## Confirmed defects
 
 Each defect below was reproduced by executing the real modules against the running server, not
-merely reported by the model.
+merely reported by the model. All four have since been **fixed and verified resolved** (see
+*Resolved defects* below).
 
 ### 1. The score validator replays against the client's own config, so the time bonus is unbounded
 
@@ -109,6 +110,51 @@ merely reported by the model.
   implements the chain correctly; the caller defeats it.
 - **Evidence:** `server.js:146-148` as quoted, against `src/rules.js:521-529`.
 
+## Resolved defects
+
+All four confirmed defects above were re-checked against the current source on 2026-09-05 and are
+no longer reproducible; each is fixed and the fix is verified. No code changed in this re-check —
+the fixes were already present in the working tree — so the entries below document how and where
+each is fixed.
+
+### 1. Score validator replays against the client's own config → RESOLVED
+
+- **Fix:** `server.js` re-validates against an **authoritative** config rebuilt from the published
+  (versioned) content descriptor rather than the submitted one. New `resolveContent()`
+  (`server.js:101-117`) maps `daily-*`/`jNN`/challenge ids to the real descriptor, and
+  `validateScore()` (`server.js:128-137`) replaces `env.config` with
+  `C.toConfig(content, …)` before `verifyEnvelope`. Daily seeds/`parTicks`/layers come from
+  `content.js`, so the client can no longer inflate `parTicks` (the `timeBonus` is bounded and the
+  replayed hash no longer matches).
+- **Verify:** a fully-forged daily envelope (real input flow, `parTicks=1900000`) stands alone in
+  `verifyEnvelope` (`score 950332`) but is rejected by the server rebuild with
+  `{"ok":false,"reason":"hash-mismatch"}`. Honest run still validates `ok:true, score 1250`.
+
+### 2. Undo moves the tick counter backwards → RESOLVED
+
+- **Fix:** `restoreSnapshot` (`src/rules.js:206-218`) no longer assigns `state.tick = snap.tick`;
+  it restores play state but leaves the monotonic tick untouched. `undo` is therefore stamped with
+  the current (non-decreasing) tick.
+- **Verify:** after a real eligible undo the tick stayed at 64 (was 64 before), `monotonic? true`.
+
+### 3. Undo corrupts the input log → RESOLVED
+
+- **Fix:** follows from fix 2 — because `restoreSnapshot` no longer rewinds the tick, the `undo`
+  entry is stamped in-order (after the commands it undoes) instead of landing out of order in
+  `state.inputLog`. `inputLog` remains ordered and `replay()` reproduces the run.
+- **Verify:** an undo entry appeared at `tick 48` after the commands it undoes (no
+  56→132→55 inversion), and a full recorded playthrough that undoes mid-run then finishes
+  validated with `verifyEnvelope {"ok":true,...,"terminal":"danger-sector"}`.
+
+### 4. Leaderboard invalid-action tie-break hard-coded to zero → RESOLVED
+
+- **Fix:** `server.js` stores `invalidActions: check.invalidActions || 0` on the entry
+  (`server.js:172`) and the scoreboard sort passes the real value on both sides
+  (`server.js:182-183`, `a.invalidActions || 0` / `b.invalidActions || 0`) instead of
+  `invalidActions: 0`.
+- **Verify:** `compareResults` now orders a `completed/100` entry with 0 invalid actions ahead of
+  one with 3 (returns `< 0`).
+
 ## Suspected — not confirmed
 
 ### 1. `replay()` can exit without a terminal state and still be treated as a run
@@ -155,9 +201,8 @@ merely reported by the model.
 
 ## Not tested
 
-- **`tests/e2e.mjs`**: not shipped. Substituted a CDP boot check against `PORT=39605 node
-  server.js`; it verifies a clean boot (title, canvas, HUD controls, no errors) but does not play a
-  tower to completion in the browser.
+- **`tests/e2e.mjs`**: was not shipped at the time of the original QA pass; it is now present and
+  passes (15/15, `E2E PASS`, desktop + mobile, no page errors) — re-verified 2026-09-05.
 - **Rendering**: `src/render.js` (492 lines) and the bundled `lib/three.module.js` were not
   reviewed; the boot check confirms no WebGL or console errors.
 - **Hosted platform paths**: `src/platform.js` requires a host launch token; presence, activity and

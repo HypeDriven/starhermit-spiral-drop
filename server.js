@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const R = require('./src/rules.js');
+const C = require('./src/content.js');
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
@@ -92,6 +93,29 @@ function readBody(req) {
 }
 
 // ---- score validation
+// Rebuild the authoritative config from published (versioned) content so the
+// client cannot choose its own parTicks/layers/limits. Daily seeds are
+// immutable after publication (spec §2); journey/challenge rules are authored.
+// Unknown/custom content has no published descriptor, so it falls back to the
+// submitted config (casual path, plausibility/rate-checked only).
+function resolveContent(env) {
+  const id = env && env.contentId;
+  if (!id) return null;
+  const dm = /^daily-(\d{4})-(\d{2})-(\d{2})$/.exec(id);
+  if (dm) {
+    const date = new Date(Date.UTC(+dm[1], +dm[2] - 1, +dm[3]));
+    const daily = C.dailyFor(date);
+    return daily.id === id ? daily : null;
+  }
+  const jm = /^j(\d{2})$/.exec(id);
+  if (jm) {
+    const stages = C.journeyStages();
+    const i = (+jm[1]) - 1;
+    return (i >= 0 && i < stages.length) ? stages[i] : null;
+  }
+  return C.CHALLENGES.find((c) => c.id === id) || null;
+}
+
 function validateScore(env) {
   // structural bounds
   if (!env || typeof env !== 'object') return { ok: false, reason: 'malformed' };
@@ -100,13 +124,22 @@ function validateScore(env) {
     return { ok: false, reason: 'config-bounds' };
   }
   if (env.rulesVersion !== R.RULES_VERSION) return { ok: false, reason: 'stale-version' };
-  // deterministic replay validation
+  // deterministic replay validation against the authoritative config
   try {
-    const v = R.verifyEnvelope(env);
+    const content = resolveContent(env);
+    const replayEnv = content
+      ? Object.assign({}, env, {
+          config: C.toConfig(content, {
+            mode: (env.config && env.config.mode) || 'journey',
+            allowUndo: !!(env.config && env.config.allowUndo)
+          })
+        })
+      : env;
+    const v = R.verifyEnvelope(replayEnv);
     if (!v.ok) return { ok: false, reason: v.reason };
     // plausibility: score bounded by components, duration bounded by MAX_TICKS
     if (v.score < 0 || v.score > 1000000) return { ok: false, reason: 'implausible-score' };
-    return { ok: true, score: v.score, terminal: v.terminal };
+    return { ok: true, score: v.score, terminal: v.terminal, invalidActions: v.invalidActions || 0 };
   } catch (e) {
     return { ok: false, reason: 'replay-error' };
   }
@@ -136,6 +169,7 @@ async function handleApi(req, res, url) {
       contentVersion: env.contentVersion,
       seed: String(env.seed || '').slice(0, 64),
       ticks: env.result && env.result.ticks || 0,
+      invalidActions: check.invalidActions || 0,
       validated: true,
       at: Date.now()
     };
@@ -145,8 +179,8 @@ async function handleApi(req, res, url) {
     entry.owner = key;
     scores.entries.push(entry);
     scores.entries.sort((a, b) => R.compareResults(
-      { reason: a.terminal, score: a.score, invalidActions: 0, ticks: a.ticks, sessionId: a.id },
-      { reason: b.terminal, score: b.score, invalidActions: 0, ticks: b.ticks, sessionId: b.id }));
+      { reason: a.terminal, score: a.score, invalidActions: a.invalidActions || 0, ticks: a.ticks, sessionId: a.id },
+      { reason: b.terminal, score: b.score, invalidActions: b.invalidActions || 0, ticks: b.ticks, sessionId: b.id }));
     scores.entries = scores.entries.slice(0, 5000);
     saveStore(SCORES_FILE, scores);
     return send(res, 200, { validated: true, rank: scores.entries.filter(e => e.content === entry.content).findIndex(e => e.id === entry.id) + 1 });

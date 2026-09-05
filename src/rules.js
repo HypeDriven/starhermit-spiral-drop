@@ -204,7 +204,10 @@
   }
 
   function restoreSnapshot(state, snap) {
-    state.tick = snap.tick; state.phase = snap.phase; state.towerAngle = snap.towerAngle;
+    // Restore the play state but NEVER rewind state.tick: the rules contract
+    // exposes a monotonically increasing tick number, and the undo command must
+    // stay stamped in-order so the input log replays (spec §2, §5).
+    state.phase = snap.phase; state.towerAngle = snap.towerAngle;
     state.rotating = snap.rotating;
     state.ball = Object.assign({}, snap.ball);
     state.fallFrom = snap.fallFrom; state.fallQuality = snap.fallQuality; state.fallPassed = snap.fallPassed;
@@ -493,7 +496,7 @@
       return { ok: false, reason: 'result-mismatch' };
     }
     if (totalScore(state) !== env.result.score) return { ok: false, reason: 'score-mismatch' };
-    return { ok: true, score: totalScore(state), terminal: state.terminal.reason };
+    return { ok: true, score: totalScore(state), terminal: state.terminal.reason, invalidActions: state.stats.invalidActions };
   }
 
   function buildEnvelope(state, startedAtOffset) {
