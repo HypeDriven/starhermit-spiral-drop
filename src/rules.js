@@ -479,6 +479,11 @@
       }
       step(state);
     }
+    // A run that exhausts the hard tick bound ends the same way live play ends:
+    // step() only raises 'tick-limit' on the call *after* the cap, which the
+    // loop condition above never makes. Without this a replay could come back
+    // with no terminal state at all.
+    if (state.phase !== 'terminal' && state.tick >= MAX_TICKS) finish(state, 'tick-limit', null);
     // drain commands scheduled at/after terminal tick (idempotent no-ops mostly)
     return state;
   }

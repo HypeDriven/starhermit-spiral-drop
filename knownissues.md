@@ -157,6 +157,9 @@ each is fixed.
 
 ## Suspected — not confirmed
 
+> Both suspicions below were closed out in the 2026-09-07 review: #1 is now fixed, #2 could not be
+> reproduced. See *Review 2026-09-07* at the end of this document.
+
 ### 1. `replay()` can exit without a terminal state and still be treated as a run
 
 - **File:** `src/rules.js:471-478`
@@ -215,3 +218,28 @@ each is fixed.
 Reproducing the findings above required running `spiral-drop/server.js` locally, which created an
 untracked `data/` directory. It holds the evidence entries used here (`ParLiar`). **Delete
 `data/` before treating any of it as real data** — this QA pass had no permission to remove it.
+
+## Review 2026-09-07 — defects found and fixed
+
+A fresh read of every module plus targeted browser reproduction (headless Chromium against the
+real UI). `npm test` 33/33 and `npm run test:e2e` 15/15 both pass before and after.
+
+| # | File | Defect | Fix |
+| --- | --- | --- | --- |
+| 1 | `index.html` | Two `<link rel="icon">` tags: the later inline data-URI placeholder overrode the authored `favicon.svg`, so the game shipped the placeholder icon. | Removed the placeholder link. |
+| 2 | `src/main.js` | The global `keydown` handler claimed the arrow keys and Space unconditionally, so the Settings sliders and the quality `<select>` could not be adjusted with the keyboard, and Space on a focused pause-menu button both activated it and toggled pause. | Keys are ignored when the target is a form control, and Space is left to a focused `<button>`. |
+| 3 | `src/main.js` | A rotate key held while the window lost focus never got its `keyup`, leaving the tower spinning after the player came back. | `window blur` clears the held set and stops rotation. |
+| 4 | `src/main.js` | Esc/pause did nothing during the countdown and backgrounding the tab did not stop it, so the run went live unattended behind the pause screen. | `pauseGame()` cancels the countdown, `resumeGame()` replays it; `visibilitychange` pauses during countdown too. |
+| 5 | `src/main.js` | The on-screen ⟲/⟳ buttons are focusable but had pointer handlers only — unusable from a keyboard. | Space/Enter press-and-hold handlers (plus blur release) added. |
+| 6 | `src/main.js` | `daily` was computed at module load, before `platform.init()` synced server time, so a skewed device clock chose the wrong daily board. | Recomputed after a successful time sync. |
+| 7 | `src/render.js` | `setHighContrast(v)` passed the high-contrast flag into `applyTheme`'s **cvd** parameter, so toggling high contrast silently switched the colour-vision-safe palette on/off (same bug on WebGL context restore). | The renderer remembers the cvd palette state and re-applies it. |
+| 8 | `src/render.js` | Every unused particle sat at the world origin instead of being parked offscreen; `update()` also allocated a fresh `Float32Array` for the ball trail on every frame. | Pools are initialised parked; the trail scratch buffer is reused. |
+| 9 | `src/audio.js` | `musicBar()` returned without rescheduling when muted, so muting killed the music loop permanently, and it kept scheduling notes at a frozen `currentTime` while the context was suspended. | Muted/suspended is now a silent tick that keeps the loop alive. |
+| 10 | `server.js` | The static path guard used `file.startsWith(ROOT)` / `startsWith(DATA_DIR)`, which also matches sibling paths such as `<ROOT>-backup`. | Compared on a path-separator boundary. |
+| 11 | `src/rules.js` | *Suspected #1 confirmed and fixed:* `replay()` exited at `MAX_TICKS` with no terminal state (`terminal: null` at tick 108000). | `replay()` finalises with `tick-limit`, matching live play. |
+| 12 | `src/ui.js` | Screens are `role="dialog" aria-modal="true"` with no accessible name; the Scores tabs never set `aria-selected`; journey stage buttons carried `role="listitem"`, stripping their button semantics. | Dialogs are labelled by their heading, tabs track selection, stage buttons keep their native role. |
+| 13 | repo root | `LICENSE.md` was missing (required by the root instructions). | Added the PolyForm Noncommercial 1.0.0 text used across the fleet. |
+
+Suspected #2 (invalid actions from repeated `rotateStart`) **could not be reproduced**: `keydown`
+returns on `e.repeat`, `startRotate()` returns when `rotating === dir`, the drag handler only fires
+on a direction change, and the gamepad poll is edge-guarded — no path re-sends a held direction.

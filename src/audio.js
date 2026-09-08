@@ -176,7 +176,13 @@ export function createAudio(opts) {
   ];
   let chordIdx = 0;
   function musicBar() {
-    if (!ctx || settings.muted) return;
+    musicTimer = null;
+    // Muted or suspended is a pause, not the end of the loop: keep the timer
+    // alive (silently) so unmuting / returning to the tab restores the music.
+    if (!ctx || settings.muted || ctx.state !== 'running') {
+      musicTimer = setTimeout(musicBar, 1000);
+      return;
+    }
     const chord = CHORDS[chordIdx % CHORDS.length];
     chordIdx++;
     const t = ctx.currentTime;

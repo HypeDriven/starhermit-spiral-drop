@@ -101,11 +101,14 @@ const session = {
   replayEnv: null,
   replayIndex: 0,
   lessonGoalMet: false,
-  startedAt: 0
+  startedAt: 0,
+  resumeWithCountdown: false
 };
 
 const stages = C.journeyStages();
-const daily = C.dailyFor(platform.now());
+// recomputed once the platform has synced server time (see boot), so the daily
+// board follows the authoritative UTC day rather than a skewed device clock
+let daily = C.dailyFor(platform.now());
 
 function journeyUnlocked() {
   let u = 0;
@@ -189,6 +192,7 @@ function startRun(content, mode, opts) {
   session.acc = 0;
   session.prev = { angle: 0, ballY: 0 };
   session.lessonGoalMet = false;
+  session.resumeWithCountdown = false;
   session.startedAt = Date.now();
   audio.seedVariants(R.hashString(content.seed));
   renderer.applyTheme(themeFor(content), settings.cvdPalette);
@@ -232,7 +236,12 @@ function objectiveText() {
 }
 
 function pauseGame() {
-  if (session.phase !== 'active') return;
+  // pausing mid-countdown must also stop the countdown, or the run starts
+  // unattended behind the pause screen
+  if (session.phase === 'countdown') {
+    clearCountdown();
+    session.resumeWithCountdown = true;
+  } else if (session.phase !== 'active') return;
   session.phase = 'paused';
   stopRotation();
   ui.pause();
@@ -240,6 +249,12 @@ function pauseGame() {
 function resumeGame() {
   if (session.phase !== 'paused') return;
   ui.close();
+  if (session.resumeWithCountdown) {
+    session.resumeWithCountdown = false;
+    session.phase = 'countdown';
+    runCountdown();
+    return;
+  }
   session.phase = 'active';
 }
 function leaveToTitle() {
@@ -247,6 +262,7 @@ function leaveToTitle() {
   stopRotation();
   platform.endActivity();
   session.phase = 'title';
+  session.resumeWithCountdown = false;
   session.state = null;
   ui.showHud(false);
   showTitle();
@@ -394,10 +410,17 @@ const KEYMAP = {
   ArrowRight: 1, KeyD: 1
 };
 const held = new Set();
+// Keys must not be stolen from focused controls: arrows drive sliders/selects and
+// Space activates the focused button. Only claim them outside form/button focus.
+function isFormTarget(t) {
+  return !!t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   audio.unlock();
+  const formTarget = isFormTarget(e.target);
   if (e.code in KEYMAP) {
+    if (formTarget) return;
     held.add(e.code);
     startRotate(KEYMAP[e.code]);
     e.preventDefault();
@@ -405,19 +428,24 @@ window.addEventListener('keydown', (e) => {
   }
   switch (e.code) {
     case 'Escape':
-      if (session.phase === 'active') pauseGame();
+      if (session.phase === 'active' || session.phase === 'countdown') pauseGame();
       else if (session.phase === 'paused') resumeGame();
       else if (session.phase === 'replay') leaveToTitle();
+      else if (session.phase === 'title' && ui.isScreenOpen) showTitle();
       break;
     case 'Space':
-      if (session.phase === 'active') pauseGame();
+      // let a focused button or control consume its own activation key
+      if (formTarget || (e.target && e.target.tagName === 'BUTTON')) return;
+      if (session.phase === 'active' || session.phase === 'countdown') pauseGame();
       else if (session.phase === 'paused') resumeGame();
       e.preventDefault();
       break;
     case 'KeyU':
+      if (formTarget) return;
       if (session.phase === 'active' && session.state.config.allowUndo) { sendCmd({ type: 'undo' }); }
       break;
     case 'KeyH':
+      if (formTarget) return;
       if (session.phase === 'active' && (session.mode === 'practice' || session.mode === 'learn')) giveHint();
       break;
   }
@@ -433,6 +461,9 @@ window.addEventListener('keyup', (e) => {
     e.preventDefault();
   }
 });
+// Losing focus swallows the keyup, which would otherwise leave the tower
+// spinning forever once the window comes back.
+window.addEventListener('blur', () => { held.clear(); stopRotation(); });
 
 function giveHint() {
   const hint = R.hint(session.state);
@@ -494,12 +525,24 @@ function bindRotButton(id, dir) {
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
   el.addEventListener('pointerleave', up);
+  // the buttons are focusable, so they must also work from the keyboard
+  el.addEventListener('keydown', (e) => {
+    if (e.repeat || (e.key !== ' ' && e.key !== 'Enter')) return;
+    e.preventDefault();
+    down(e);
+  });
+  el.addEventListener('keyup', (e) => {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    e.preventDefault();
+    up();
+  });
+  el.addEventListener('blur', up);
 }
 bindRotButton('btn-rot-left', -1);
 bindRotButton('btn-rot-right', 1);
 
 document.getElementById('btn-pause').addEventListener('click', () => {
-  if (session.phase === 'active') pauseGame(); else if (session.phase === 'paused') resumeGame();
+  if (session.phase === 'paused') resumeGame(); else pauseGame();
 });
 document.getElementById('btn-undo').addEventListener('click', () => sendCmd({ type: 'undo' }));
 document.getElementById('btn-hint').addEventListener('click', giveHint);
@@ -537,7 +580,7 @@ function showTitle() {
   ui.title({
     nextLabel: done === 0 ? 'start the Journey' : 'Stage ' + (ni + 1) + ' — ' + stages[ni].name,
     dailyDone,
-    summary: done + '/40 journey stages · daily streak ' + progress.dailyStreak.count +
+    summary: done + '/' + stages.length + ' journey stages · daily streak ' + progress.dailyStreak.count +
       ' · ' + Object.keys(progress.achievements).length + '/5 achievements' +
       (platform.hosted ? '' : ' · offline mode')
   });
@@ -619,6 +662,8 @@ function watchReplay() {
   session.state = R.createGame(env.config);
   session.phase = 'replay';
   session.replayIndex = 0;
+  session.acc = 0;
+  session.prev = { angle: session.state.towerAngle, ballY: session.state.ball.y };
   ui.showHud(true);
   ui.toast('Replay — Esc to exit');
   ui.announce('Watching replay of the recorded run.');
@@ -735,7 +780,7 @@ function updateHud(s) {
 // ---------------- lifecycle ----------------
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (session.phase === 'active') pauseGame();
+    if (session.phase === 'active' || session.phase === 'countdown') pauseGame();
     audio.suspend();
   } else {
     audio.resume();
@@ -751,6 +796,7 @@ window.SpiralDrop = { R, C, session, validateAll: () => C.journeyStages().map(st
 // ---------------- boot ----------------
 (async function boot() {
   await platform.init();
+  if (platform.timeSynced) daily = C.dailyFor(platform.now());
   applySettings();
   showTitle();
   renderer.applyTheme(C.themeById('ember'), settings.cvdPalette);

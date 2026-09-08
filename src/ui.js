@@ -53,6 +53,12 @@ export function createUI(actions) {
     const panel = h('div', { class: 'panel', role: 'document' });
     screen.append(panel);
     build(panel);
+    // name the dialog from its own heading so screen readers announce it
+    const heading = panel.querySelector('h1, h2');
+    if (heading) {
+      if (!heading.id) heading.id = 'screen-heading';
+      screen.setAttribute('aria-labelledby', heading.id);
+    }
     screensRoot.append(screen);
     const focusable = panel.querySelector('button, select, input, [tabindex]');
     if (focusable) focusable.focus();
@@ -122,7 +128,9 @@ export function createUI(actions) {
         h('h2', null, 'Journey'),
         h('p', { class: 'sub' }, Object.keys(done).length + ' / ' + stages.length + ' stages cleared. Mastery stages glow gold.')
       );
-      const grid = h('div', { class: 'grid', role: 'list' });
+      // plain container: giving the buttons role="listitem" would strip their
+      // button semantics from assistive technology
+      const grid = h('div', { class: 'grid', 'aria-label': 'Journey stages' });
       const unlocked = actions.journeyUnlocked();
       stages.forEach((st, i) => {
         const cleared = !!done[st.id];
@@ -131,7 +139,6 @@ export function createUI(actions) {
         grid.append(h('button', {
           class: 'stage-btn' + (st.mastery ? ' mastery' : '') + (isUnlocked ? '' : ' locked'),
           disabled: !isUnlocked,
-          role: 'listitem',
           'aria-label': 'Stage ' + (i + 1) + ' ' + st.name + (cleared ? ', cleared, ' + stars + ' stars' : isUnlocked ? '' : ', locked'),
           onclick: () => { close(); actions.onStartStage(i); }
         },
@@ -205,9 +212,16 @@ export function createUI(actions) {
         });
         body.append(h('p', { class: 'sub' }, label), tbl);
       };
-      const tabLocal = h('button', { class: 'ghost', role: 'tab', onclick: () => render(data.local, 'Local bests on this device.') }, 'Local');
-      const tabGlobal = h('button', { class: 'ghost', role: 'tab', onclick: () => render(data.global, data.hosted ? 'Global (validated replays).' : 'Offline — global boards need the hosted version.') }, 'Global');
-      const tabFriends = h('button', { class: 'ghost', role: 'tab', onclick: () => render(data.friends, 'Friends-only board.') }, 'Friends');
+      const allTabs = [];
+      const select = (tab, rows, label) => { render(rows, label); allTabs.forEach(t => t.setAttribute('aria-selected', String(t === tab))); };
+      const tabLocal = h('button', { class: 'ghost', role: 'tab', 'aria-selected': 'true' }, 'Local');
+      const tabGlobal = h('button', { class: 'ghost', role: 'tab', 'aria-selected': 'false' }, 'Global');
+      const tabFriends = h('button', { class: 'ghost', role: 'tab', 'aria-selected': 'false' }, 'Friends');
+      allTabs.push(tabLocal, tabGlobal, tabFriends);
+      tabLocal.addEventListener('click', () => select(tabLocal, data.local, 'Local bests on this device.'));
+      tabGlobal.addEventListener('click', () => select(tabGlobal, data.global,
+        data.hosted ? 'Global (validated replays).' : 'Offline — global boards need the hosted version.'));
+      tabFriends.addEventListener('click', () => select(tabFriends, data.friends, 'Friends-only board.'));
       tabs.append(tabLocal, tabGlobal, tabFriends);
       p.append(tabs, body, h('div', { class: 'btn-row' }, backButton(actions.onHome)));
       render(data.local, 'Local bests on this device.');
@@ -330,7 +344,7 @@ export function createUI(actions) {
   const elTimer = document.getElementById('hud-timer');
   const btnUndo = document.getElementById('btn-undo');
   const btnHint = document.getElementById('btn-hint');
-  let lastAnnouncedScore = -1, lastAnnouncedLayer = -1;
+  let lastAnnouncedLayer = -1;
 
   function hudView(v) {
     elObj.textContent = v.objective;
@@ -341,12 +355,10 @@ export function createUI(actions) {
     if (v.timer != null) elTimer.textContent = v.timer;
     btnUndo.hidden = !v.canUndo;
     btnHint.hidden = !v.canHint;
-    if (v.score !== lastAnnouncedScore && v.score % 50 === 0) { /* throttled by cadence below */ }
     if (v.layer !== lastAnnouncedLayer) {
       announce('Layer ' + v.layer + ' of ' + v.totalLayers + '. Score ' + v.score + '.');
       lastAnnouncedLayer = v.layer;
     }
-    lastAnnouncedScore = v.score;
   }
 
   function showHud(show) { hud.hidden = !show; }

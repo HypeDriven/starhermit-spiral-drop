@@ -204,6 +204,9 @@ export function createRenderer(canvas, hooks) {
   function makeParticlePool(cap, size, color) {
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(cap * 3);
+    // park every unused particle far offscreen: at (0,0,0) they would all render
+    // as a dot cluster on the tower axis before anything has been spawned
+    for (let i = 0; i < cap; i++) pos[i * 3 + 1] = 1e6;
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     const mat = new THREE.PointsMaterial({ size, color, transparent: true, opacity: 0.9, depthWrite: false });
     const points = new THREE.Points(geo, mat);
@@ -250,17 +253,20 @@ export function createRenderer(canvas, hooks) {
   trail.frustumCulled = false;
   scene.add(trail);
   let trailHead = 0, trailCount = 0;
+  const trailOrdered = new Float32Array(TRAIL_N * 3); // reused; no per-frame allocation
 
   // ---- camera spring state
   let camY = 3, camVY = 0, shake = 0;
   let bounceT = 0;
 
   let theme = null;
+  let cvdPalette = false;   // remembered so a high-contrast toggle cannot clear it
   let layerData = [];
   let layerCount = 0;
 
   function applyTheme(t, cvd) {
     theme = t;
+    cvdPalette = !!cvd;
     const patch = cvd ? (hooks.cvdPatch || {}) : {};
     const pick = (k) => (cvd && patch[k]) || t[k];
     skyMat.uniforms.top.value.set(t.skyTop);
@@ -401,12 +407,11 @@ export function createRenderer(canvas, hooks) {
       trailCount--; // fade by shrinking
     }
     // rewrite trail ordered oldest→newest
-    const ordered = new Float32Array(TRAIL_N * 3);
     for (let i = 0; i < trailCount; i++) {
       const k = (trailHead - trailCount + i + TRAIL_N * 2) % TRAIL_N;
-      ordered[i * 3] = trailPos[k * 3]; ordered[i * 3 + 1] = trailPos[k * 3 + 1]; ordered[i * 3 + 2] = trailPos[k * 3 + 2];
+      trailOrdered[i * 3] = trailPos[k * 3]; trailOrdered[i * 3 + 1] = trailPos[k * 3 + 1]; trailOrdered[i * 3 + 2] = trailPos[k * 3 + 2];
     }
-    trailGeo.attributes.position.array.set(ordered);
+    trailGeo.attributes.position.array.set(trailOrdered);
     trailGeo.setDrawRange(0, trailCount);
     trailGeo.attributes.position.needsUpdate = true;
 
@@ -459,7 +464,7 @@ export function createRenderer(canvas, hooks) {
   });
   canvas.addEventListener('webglcontextrestored', () => {
     makePools();
-    if (theme) applyTheme(theme, highContrast);
+    if (theme) applyTheme(theme, cvdPalette);
     if (hooks.onContextRestored) hooks.onContextRestored();
   });
 
@@ -470,7 +475,7 @@ export function createRenderer(canvas, hooks) {
   return {
     update, handleEvent, applyTheme, setLayers, setTier,
     setReducedMotion(v) { reducedMotion = v; },
-    setHighContrast(v) { highContrast = v; if (theme) applyTheme(theme, v); },
+    setHighContrast(v) { highContrast = v; if (theme) applyTheme(theme, cvdPalette); },
     adaptQuality,
     resize: applySize,
     projectBall() {

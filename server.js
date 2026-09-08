@@ -217,12 +217,16 @@ async function handleApi(req, res, url) {
 }
 
 function serveStatic(req, res, url) {
-  let rel = decodeURIComponent(url.pathname);
+  let rel;
+  try { rel = decodeURIComponent(url.pathname); } catch { res.writeHead(400); return res.end('bad path'); }
+  if (rel.split(/[\\/]/).some(p => p.startsWith('.') || p === 'node_modules')) { res.writeHead(404); return res.end('not found'); }
   if (rel === '/') rel = '/index.html';
   const file = path.normalize(path.join(ROOT, rel));
-  if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end('forbidden'); }
+  // compare on a path-separator boundary: a bare prefix test would also accept
+  // sibling directories such as <ROOT>-backup
+  if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end('forbidden'); }
   // never serve server-side data or hidden files
-  if (file.startsWith(DATA_DIR) || path.basename(file).startsWith('.')) {
+  if (file === DATA_DIR || file.startsWith(DATA_DIR + path.sep) || path.basename(file).startsWith('.')) {
     res.writeHead(404); return res.end('not found');
   }
   fs.readFile(file, (err, data) => {
