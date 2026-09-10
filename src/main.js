@@ -789,6 +789,13 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('error', () => bumpTel('errors'));
 window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
+// One-input confidence: every button press (pointer or keyboard) acknowledges
+// with the ui-tap sound. Rotate-hold buttons are excluded — startRotate already
+// plays rotateStart, and undo/hint play their own event sounds.
+document.getElementById('app').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b && !b.disabled && b.id !== 'btn-rot-left' && b.id !== 'btn-rot-right') audio.event('uiTap');
+});
 
 // content validation in dev console (offline validators from the spec)
 window.SpiralDrop = { R, C, session, validateAll: () => C.journeyStages().map(st => [st.id, C.validateContent(st)]) };
