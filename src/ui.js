@@ -220,7 +220,7 @@ export function createUI(actions) {
       allTabs.push(tabLocal, tabGlobal, tabFriends);
       tabLocal.addEventListener('click', () => select(tabLocal, data.local, 'Local bests on this device.'));
       tabGlobal.addEventListener('click', () => select(tabGlobal, data.global,
-        data.hosted ? 'Global (validated replays).' : 'Offline — global boards need the hosted version.'));
+        data.hosted ? (data.globalLabel || 'Global board.') : 'Offline — global boards need the hosted version.'));
       tabFriends.addEventListener('click', () => select(tabFriends, data.friends, 'Friends-only board.'));
       tabs.append(tabLocal, tabGlobal, tabFriends);
       p.append(tabs, body, h('div', { class: 'btn-row' }, backButton(actions.onHome)));

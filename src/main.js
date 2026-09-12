@@ -52,9 +52,26 @@ const telemetry = Object.assign({
   starts: 0, tutorialSteps: 0, roundEnds: 0, retries: 0, settingsChanges: 0, errors: 0
 }, loadJSON('spiraldrop.telemetry.v1', {}));
 
-function saveSettings() { saveJSON('spiraldrop.settings.v1', settings); }
-function saveProgress() { saveJSON('spiraldrop.progress.v1', progress); }
-function bumpTel(key) { telemetry[key] = (telemetry[key] || 0) + 1; saveJSON('spiraldrop.telemetry.v1', telemetry); }
+function saveSettings() { saveJSON('spiraldrop.settings.v1', settings); syncCloud(); }
+function saveProgress() { saveJSON('spiraldrop.progress.v1', progress); syncCloud(); }
+function bumpTel(key) { telemetry[key] = (telemetry[key] || 0) + 1; saveJSON('spiraldrop.telemetry.v1', telemetry); syncCloud(); }
+
+// Cloud mirror of the local save doc (settings + progress + telemetry).
+// localStorage stays the offline cache; the platform slot is a remote mirror,
+// written debounced and flushed on pagehide. Remote wins on conflict.
+const CLOUD_SETTINGS_KEYS = ['music', 'effects', 'ambience', 'voice', 'muted', 'quality', 'reducedMotion', 'highContrast', 'cvdPalette', 'largeText', 'leftHanded', 'holdToRotate', 'captions'];
+const CLOUD_PROGRESS_KEYS = ['stages', 'lessons', 'achievements', 'lifetimeLayers', 'dailyStreak', 'bestScores', 'nextStage'];
+const CLOUD_TELEMETRY_KEYS = ['starts', 'tutorialSteps', 'roundEnds', 'retries', 'settingsChanges', 'errors'];
+function collectCloudDoc() { return { settings, progress, telemetry, savedAt: Date.now() }; }
+function syncCloud() { if (platform.hosted && platform.authenticated) platform.cloudSave(collectCloudDoc()); }
+function adoptCloudDoc(doc) {
+  if (!doc || typeof doc !== 'object') return false;
+  let any = false;
+  if (doc.settings) for (const k of CLOUD_SETTINGS_KEYS) if (k in doc.settings) { settings[k] = doc.settings[k]; any = true; }
+  if (doc.progress) for (const k of CLOUD_PROGRESS_KEYS) if (k in doc.progress) { progress[k] = doc.progress[k]; any = true; }
+  if (doc.telemetry) for (const k of CLOUD_TELEMETRY_KEYS) if (k in doc.telemetry) { telemetry[k] = doc.telemetry[k]; any = true; }
+  return any;
+}
 
 // ---------------- platform / audio ----------------
 const platform = createPlatform();
@@ -314,6 +331,7 @@ function onTerminal() {
   saveProgress();
 
   const env = R.buildEnvelope(s, session.startedAt);
+  env.playerName = platform.playerName || null; // server labels unnamed entries 'guest'
   session.replayEnv = env;
   let rankLine = null;
   if (session.opts.ranked && won) {
@@ -582,7 +600,9 @@ function showTitle() {
     dailyDone,
     summary: done + '/' + stages.length + ' journey stages · daily streak ' + progress.dailyStreak.count +
       ' · ' + Object.keys(progress.achievements).length + '/5 achievements' +
-      (platform.hosted ? '' : ' · offline mode')
+      (platform.authenticated
+        ? ' · ' + (platform.playerName || 'Player') + ' · ' + platform.syncLabel
+        : platform.hosted ? '' : ' · offline mode')
   });
 }
 
@@ -651,7 +671,12 @@ async function showScores() {
       friends = fr.entries || [];
     } catch { /* offline between init and now */ }
   }
-  ui.scores({ local, global, friends, hosted: platform.hosted });
+  ui.scores({
+    local, global, friends, hosted: platform.hosted,
+    globalLabel: platform.authenticated
+      ? 'Global (platform leaderboard — read-only).'
+      : 'Global (validated replays).'
+  });
 }
 
 // ---------------- replay viewing ----------------
@@ -804,6 +829,15 @@ window.SpiralDrop = { R, C, session, validateAll: () => C.journeyStages().map(st
 (async function boot() {
   await platform.init();
   if (platform.timeSynced) daily = C.dailyFor(platform.now());
+  // cloud save: the remote mirror wins on conflict; when the slot is empty
+  // the local doc is uploaded so other devices converge on it
+  if (platform.authenticated) {
+    if (adoptCloudDoc(platform.cloudDoc)) {
+      saveSettings();
+      saveProgress();
+    }
+    if (!platform.cloudDoc) platform.cloudSave(collectCloudDoc());
+  }
   applySettings();
   showTitle();
   renderer.applyTheme(C.themeById('ember'), settings.cvdPalette);
