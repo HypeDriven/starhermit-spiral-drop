@@ -363,7 +363,7 @@ export function createRenderer(canvas, hooks) {
     }
     shake = Math.max(0, shake - dt * 1.8);
     const sh = reducedMotion ? 0 : shake * 0.12;
-    camera.position.set(Math.sin(performance.now() * 0.03) * sh, camY + Math.cos(performance.now() * 0.041) * sh, CAM.dist);
+    camera.position.set(Math.sin(performance.now() * 0.03) * sh, camY + Math.cos(performance.now() * 0.041) * sh, camDist);
     camera.lookAt(0, camY - CAM.height - CAM.lookBelow, 0);
 
     // ball visuals: bounce while resting (cosmetic), stretch while falling
@@ -429,6 +429,16 @@ export function createRenderer(canvas, hooks) {
     else if (fpsEma > 58 && renderScale < 1) { renderScale = Math.min(1, renderScale + 0.05); applySize(); }
   }
 
+  // Camera distance: the authored value on wide screens, pulled back on
+  // narrow/portrait ones so the whole active ring (outer radius plus padding)
+  // fits inside the horizontal field of view.
+  let camDist = CAM.dist;
+  function fitDistance(aspect) {
+    const halfW = TOWER.ringOuter + 0.35;
+    const hTan = Math.tan(THREE.MathUtils.degToRad(CAM.fov / 2)) * aspect;
+    return Math.max(CAM.dist, halfW / hTan + TOWER.ringOuter * 0.35);
+  }
+
   function applySize() {
     const w = canvas.clientWidth || canvas.parentElement.clientWidth;
     const h = canvas.clientHeight || canvas.parentElement.clientHeight;
@@ -438,6 +448,7 @@ export function createRenderer(canvas, hooks) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    camDist = fitDistance(camera.aspect);
   }
 
   function setTier(t) {

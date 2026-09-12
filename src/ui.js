@@ -51,6 +51,10 @@ export function createUI(actions) {
     screensRoot.textContent = '';
     const screen = h('div', { class: 'screen' + (opts && opts.transparent ? ' transparent-bg' : ''), role: 'dialog', 'aria-modal': 'true' });
     const panel = h('div', { class: 'panel', role: 'document' });
+    // builders pass conditional children as null; native append would render
+    // the literal text "null"
+    const nativeAppend = panel.append.bind(panel);
+    panel.append = (...nodes) => nativeAppend(...nodes.flat(9).filter(n => n != null && n !== false));
     screen.append(panel);
     build(panel);
     // name the dialog from its own heading so screen readers announce it
@@ -327,7 +331,7 @@ export function createUI(actions) {
         r.achievements && r.achievements.length ? h('p', null, '🏆 ' + r.achievements.join(', ')) : null,
         r.rankLine ? h('p', { class: 'sub' }, r.rankLine) : null,
         h('div', { class: 'btn-row' },
-          h('button', { class: 'big', onclick: actions.onRestart, autofocus: true }, won && r.nextLabel ? 'Next: ' + r.nextLabel : 'Retry'),
+          h('button', { class: 'big', onclick: won && r.nextLabel ? actions.onNext : actions.onRestart, autofocus: true }, won && r.nextLabel ? 'Next: ' + r.nextLabel : 'Retry'),
           r.nextLabel && won ? h('button', { class: 'ghost', onclick: actions.onRetry }, 'Replay this stage') : null,
           h('button', { class: 'ghost', onclick: actions.onWatchReplay }, 'Watch replay'),
           backButton(actions.onLeave, 'Menu'))

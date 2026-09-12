@@ -306,7 +306,8 @@ function onTerminal() {
       progress.stages[c.id] = { stars: Math.max(stars, prev ? prev.stars : 0), score: Math.max(total, prev ? prev.score : 0) };
     }
     const ni = nextJourneyIndex();
-    if (stages[ni] && ni > c.index) nextLabel = stages[ni].name;
+    if (stages[ni] && ni > c.index) { nextLabel = stages[ni].name; session.nextStage = stages[ni]; }
+    else session.nextStage = null;
   }
   if (session.mode === 'learn') {
     const l = session.opts.lesson;
@@ -624,6 +625,12 @@ const ui = createUI({
   onStartLesson: (i) => ui.setup(modeSetupInfo('learn', i)),
   onResume: resumeGame,
   onRestart: () => { bumpTel('retries'); ui.close(); startRun(session.content, session.mode, session.opts); },
+  // "Next: <stage>" on a won Journey stage advances the content before starting
+  onNext: () => {
+    ui.close();
+    if (session.mode === 'journey' && session.nextStage) startRun(session.nextStage, 'journey', { allowUndo: false });
+    else startRun(session.content, session.mode, session.opts);
+  },
   onRetry: () => { bumpTel('retries'); ui.close(); startRun(session.content, session.mode, session.opts); },
   onLeave: leaveToTitle,
   onWatchReplay: watchReplay,
