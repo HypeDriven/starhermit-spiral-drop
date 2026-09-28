@@ -39,8 +39,9 @@ function saveJSON(key, data) {
 
 const settings = Object.assign({
   music: 0.6, effects: 0.8, ambience: 0.5, voice: 0.8, muted: false,
-  quality: 'high', reducedMotion: false, highContrast: false, cvdPalette: false,
-  largeText: false, leftHanded: false, holdToRotate: true, captions: true
+  reducedMotion: false, highContrast: false, cvdPalette: false,
+  largeText: false, leftHanded: false, holdToRotate: true, captions: true,
+  gfx: {}   // graphics quality (see gfx.js): {} = Auto
 }, loadJSON('spiraldrop.settings.v1', {}));
 
 const progress = Object.assign({
@@ -59,7 +60,7 @@ function bumpTel(key) { telemetry[key] = (telemetry[key] || 0) + 1; saveJSON('sp
 // Cloud mirror of the local save doc (settings + progress + telemetry).
 // localStorage stays the offline cache; the platform slot is a remote mirror,
 // written debounced and flushed on pagehide. Remote wins on conflict.
-const CLOUD_SETTINGS_KEYS = ['music', 'effects', 'ambience', 'voice', 'muted', 'quality', 'reducedMotion', 'highContrast', 'cvdPalette', 'largeText', 'leftHanded', 'holdToRotate', 'captions'];
+const CLOUD_SETTINGS_KEYS = ['music', 'effects', 'ambience', 'voice', 'muted', 'reducedMotion', 'highContrast', 'cvdPalette', 'largeText', 'leftHanded', 'holdToRotate', 'captions', 'gfx'];
 const CLOUD_PROGRESS_KEYS = ['stages', 'lessons', 'achievements', 'lifetimeLayers', 'dailyStreak', 'bestScores', 'nextStage'];
 const CLOUD_TELEMETRY_KEYS = ['starts', 'tutorialSteps', 'roundEnds', 'retries', 'settingsChanges', 'errors'];
 function collectCloudDoc() { return { settings, progress, telemetry, savedAt: Date.now() }; }
@@ -100,7 +101,7 @@ try {
     'Your settings and progress are safe. Try updating your browser or enabling hardware acceleration.');
   throw e;
 }
-renderer.setTier(settings.quality);
+renderer.setGraphics(settings.gfx || {});
 renderer.setReducedMotion(settings.reducedMotion);
 renderer.setHighContrast(settings.highContrast);
 
@@ -615,7 +616,7 @@ const ui = createUI({
   onShowChallenge: () => ui.challenge(C.CHALLENGES, progress.bestScores),
   onShowLearn: () => ui.learn(C.LESSONS, progress),
   onShowScores: showScores,
-  onShowSettings: () => ui.settings(settings),
+  onShowSettings: () => ui.settings(settings, renderer.graphicsInfo),
   onShowHelp: () => ui.help(BINDINGS),
   onHome: () => { session.phase === 'paused' ? ui.pause() : showTitle(); },
   journeyUnlocked,
@@ -654,7 +655,7 @@ ui.applyA11y(settings);
 
 function applySettings() {
   ui.applyA11y(settings);
-  renderer.setTier(settings.quality);
+  renderer.setGraphics(settings.gfx || {});
   renderer.setReducedMotion(settings.reducedMotion);
   renderer.setHighContrast(settings.highContrast);
   if (session.content) renderer.applyTheme(themeFor(session.content), settings.cvdPalette);

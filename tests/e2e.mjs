@@ -296,6 +296,82 @@ async function runPass(browser, name, ctxOpts, { full }) {
   console.log(`ok - ${name}: no page errors`);
 }
 
+// ---------- Graphics settings pass ----------
+// Title → Settings → Graphics: switch preset Low then High, override one
+// category, confirm it applies (data-gfx-preset + summary) and survives a
+// reload. Zero console errors AND warnings are allowed here.
+async function graphicsPass(browser, name, ctxOpts) {
+  const problems = [];
+  const context = await browser.newContext(ctxOpts);
+  const page = await context.newPage();
+  page.setDefaultTimeout(120000);
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() !== 'error' && m.type() !== 'warning') return;
+    if (browserNoise.test(m.text())) return;
+    const url = m.location()?.url || '';
+    if (/Failed to load resource/.test(m.text()) && /\/api\/|favicon/.test(url)) return;
+    problems.push(`console ${m.type()}: ${m.text()}`);
+  });
+  const click = (sel) => ctxOpts.hasTouch ? page.tap(sel) : page.click(sel);
+  const openGraphics = async () => {
+    await page.waitForSelector('#screens .screen .panel h1');
+    await click('#screens .screen .panel button.ghost:has-text("Settings")');
+    await page.waitForSelector('#gfx-section #gfx-preset');
+    await page.locator('#gfx-preset').scrollIntoViewIfNeeded();
+  };
+  const inViewport = async (sel) => {
+    const bb = await page.locator(sel).boundingBox();
+    const vp = page.viewportSize();
+    return bb && bb.x >= 0 && bb.y >= 0 && bb.x + bb.width <= vp.width + 1 && bb.y + bb.height <= vp.height + 1;
+  };
+  try {
+    await page.goto(BASE, { waitUntil: 'load' });
+    await openGraphics();
+    const auto = await page.getAttribute('body', 'data-gfx-preset');
+    ok(`${name}: Graphics panel open (Auto resolved to "${auto}")`);
+
+    await page.selectOption('#gfx-preset', 'low');
+    await page.waitForFunction(() => document.body.dataset.gfxPreset === 'low');
+    await page.selectOption('#gfx-preset', 'high');
+    await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
+    if (!/2048² shadows/.test(await page.textContent('#gfx-summary'))) throw new Error('High preset summary missing its shadow cost');
+    // override one category (and one cheap-to-render tweak for software GL)
+    await page.locator('#gfx-bloom').scrollIntoViewIfNeeded();
+    await page.selectOption('#gfx-bloom', 'off');
+    await page.selectOption('#gfx-ao', 'off');
+    const summary = await page.textContent('#gfx-summary');
+    if (/bloom|ambient occlusion/.test(summary)) throw new Error(`override not applied: "${summary}"`);
+    // every control reachable inside the panel without cut-off
+    for (const sel of ['#gfx-preset', '#gfx-scale', '#gfx-bloom', '#gfx-background', '#gfx-adaptive', '#gfx-fps']) {
+      await page.locator(sel).scrollIntoViewIfNeeded();
+      if (!(await inViewport(sel))) throw new Error(`${sel} is cut off`);
+    }
+    await page.screenshot({ path: SHOT('graphics', name) });
+    ok(`${name}: preset Low → High applied, bloom/AO overrides applied ("${summary.trim()}")`);
+
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
+    await openGraphics();
+    const vals = await page.evaluate(() => [document.getElementById('gfx-preset').value, document.getElementById('gfx-bloom').value]);
+    if (vals[0] !== 'high' || vals[1] !== 'off') throw new Error('graphics settings not persisted: ' + vals);
+    ok(`${name}: graphics settings survive reload (${vals.join(', ')})`);
+
+    // choosing a preset clears overrides; Ultra must render without warnings too
+    await page.selectOption('#gfx-preset', 'ultra');
+    await page.waitForFunction(() => document.body.dataset.gfxPreset === 'ultra');
+    if ((await page.inputValue('#gfx-bloom')) !== 'preset') throw new Error('preset change did not clear overrides');
+    await sleep(1500);
+    await page.selectOption('#gfx-preset', 'auto');
+    await page.waitForFunction((a) => document.body.dataset.gfxPreset === a, auto);
+    ok(`${name}: Ultra renders cleanly; choosing a preset clears overrides`);
+  } finally {
+    await context.close();
+  }
+  if (problems.length) throw new Error(`${name} graphics pass had console output:\n  ${problems.join('\n  ')}`);
+  console.log(`ok - ${name}: graphics pass had no console errors or warnings`);
+}
+
 async function tapCenter(page, sel) {
   const bb = await page.locator(sel).boundingBox();
   if (!bb) throw new Error(`no bounding box for ${sel}`);
@@ -313,6 +389,8 @@ try {
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+  await graphicsPass(browser, 'desktop-gfx', { viewport: { width: 1280, height: 800 } });
+  await graphicsPass(browser, 'mobile-gfx', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   console.log('\nE2E PASS — spiral-drop, desktop + mobile, no page errors');
 } catch (e) {
   failures++;

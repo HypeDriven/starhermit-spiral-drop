@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/run-tests.js",
+    "test": "node tests/run-tests.js && node --test tests/gfx.test.mjs",
     "test:e2e": "node tests/e2e.mjs"
   },
   "devDependencies": {

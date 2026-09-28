@@ -3,6 +3,8 @@
  * focus management, live-region announcements, captions, responsive shell.
  * UI state is fully separate from simulation state.
  */
+import { PRESETS, CATEGORIES, presetTier, choosePreset, describe } from './gfx.js';
+import { gfxStrings } from './gfx-i18n.js';
 
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -249,7 +251,7 @@ export function createUI(actions) {
   }
 
   // ---------------- Settings ----------------
-  function settings(s) {
+  function settings(s, graphicsInfo) {
     open(p => {
       p.append(h('h2', null, 'Settings'));
       const slider = (label, key, val) => h('label', { class: 'slider' },
@@ -267,11 +269,7 @@ export function createUI(actions) {
         slider('Voice', 'voice', s.voice),
         checkbox('Mute all', 'muted', s.muted),
         checkbox('Captions for audio cues', 'captions', s.captions),
-        h('h3', null, 'Graphics'),
-        h('label', { class: 'slider' }, h('span', null, 'Quality tier'),
-          h('select', { onchange: (e) => actions.onSettingsChanged({ quality: e.target.value }) },
-            ['low', 'medium', 'high'].map(t => h('option', { value: t, selected: s.quality === t }, t[0].toUpperCase() + t.slice(1)))),
-          h('span', null, '')),
+        graphicsSection(s, graphicsInfo),
         h('h3', null, 'Accessibility & controls'),
         checkbox('Reduced motion (no shake/swoops)', 'reducedMotion', s.reducedMotion),
         checkbox('High contrast', 'highContrast', s.highContrast),
@@ -291,6 +289,81 @@ export function createUI(actions) {
         h('input', { type: 'checkbox', checked: !!val, onchange: (e) => actions.onSettingsChanged({ [key]: e.target.checked }) }),
         label);
     }
+  }
+
+  // ---------------- Graphics section (quality model in gfx.js) ----------------
+  function graphicsSection(s, graphicsInfo) {
+    const T = gfxStrings();
+    const wrap = h('section', { id: 'gfx-section', 'aria-labelledby': 'gfx-heading' });
+    const fill = (str, vars) => str.replace(/\{(\w+)\}/g, (_, k) => vars[k]);
+    const commit = (next, focusId) => {
+      actions.onSettingsChanged({ gfx: next });
+      render(focusId);
+    };
+    function render(focusId) {
+      const saved = Object.assign({}, s.gfx || {});
+      const info = graphicsInfo ? graphicsInfo() : null;
+      const r = info ? info.resolved : null;
+      const tier = r ? r.preset : 'balanced';
+      wrap.textContent = '';
+      wrap.append(h('h3', { id: 'gfx-heading' }, T.graphics));
+      const row = (label, id, control) => h('label', { class: 'slider gfx-row gfx-sel', for: id },
+        h('span', null, label), control);
+
+      // Quality preset
+      const presetSel = h('select', {
+        id: 'gfx-preset', 'data-gfx': 'preset',
+        onchange: (e) => commit(choosePreset(saved, e.target.value), 'gfx-preset')
+      },
+        h('option', { value: 'auto', selected: !PRESETS.includes(saved.preset) },
+          fill(T.auto, { tier: T.presets[info ? info.detected : 'balanced'] })),
+        PRESETS.map(p => h('option', { value: p, selected: saved.preset === p }, T.presets[p])));
+      wrap.append(row(T.quality, 'gfx-preset', presetSel));
+
+      // Render scale 50–200 %
+      const pct = Math.round((Number(saved.render_scale) || 1) * 100);
+      const scaleVal = h('span', { class: 'gfx-val' }, pct + '%');
+      const scale = h('input', {
+        id: 'gfx-scale', 'data-gfx': 'render_scale', type: 'range', min: 50, max: 200, step: 5, value: pct,
+        oninput: (e) => { scaleVal.textContent = e.target.value + '%'; },
+        onchange: (e) => commit(Object.assign({}, saved, { render_scale: Number(e.target.value) / 100 }), 'gfx-scale')
+      });
+      wrap.append(h('label', { class: 'slider gfx-row', for: 'gfx-scale' }, h('span', null, T.renderScale), scale, scaleVal));
+
+      // One select per category, defaulting to the preset's own tier
+      for (const [cat, tiers] of Object.entries(CATEGORIES)) {
+        const own = presetTier(tier, cat);
+        const sel = h('select', {
+          id: 'gfx-' + cat, 'data-gfx': cat,
+          onchange: (e) => {
+            const next = Object.assign({}, saved);
+            if (e.target.value === 'preset') delete next[cat]; else next[cat] = e.target.value;
+            commit(next, 'gfx-' + cat);
+          }
+        },
+          h('option', { value: 'preset', selected: !tiers.includes(saved[cat]) }, fill(T.fromPreset, { tier: T.tiers[own] || own })),
+          tiers.map(t => h('option', { value: t, selected: saved[cat] === t }, T.tiers[t] || t)));
+        wrap.append(row(T.cats[cat], 'gfx-' + cat, sel));
+      }
+
+      const toggle = (label, id, key, val) => h('label', { class: 'check' },
+        h('input', {
+          type: 'checkbox', id, 'data-gfx': key, checked: !!val,
+          onchange: (e) => commit(Object.assign({}, saved, { [key]: e.target.checked }), id)
+        }), label);
+      wrap.append(
+        toggle(T.adaptive, 'gfx-adaptive', 'adaptive', saved.adaptive !== false),
+        toggle(T.showFps, 'gfx-fps', 'show_fps', !!saved.show_fps));
+
+      if (info) {
+        wrap.append(h('p', { id: 'gfx-summary', class: 'sub gfx-summary', 'data-gfx-preset': r.preset },
+          info.gpu + ' · ' + describe(r, info.pixels, T.describe)));
+        if (info.postFailed) wrap.append(h('p', { id: 'gfx-note', class: 'gfx-note', role: 'note' }, T.postUnavailable));
+      }
+      if (focusId) { const el = wrap.querySelector('#' + focusId); if (el) el.focus(); }
+    }
+    render();
+    return wrap;
   }
 
   // ---------------- Pause ----------------
