@@ -6,12 +6,11 @@ striped danger sectors. Chain drops to charge a smash. Reach the base.
 ## Run
 
 ```
-node server.js          # → http://localhost:8080 (static + API + validated boards)
-# or any static server, e.g.:  npx serve .
+npx serve .             # or any static server
 ```
 
-Fully playable offline from a static host; the Node server adds server-time
-sync, replay-validated leaderboards, and activity tracking.
+Fully playable offline from a static host; the client makes no server API
+calls.
 
 ## Test
 
@@ -47,8 +46,8 @@ immutability, and fuzz runs (no hangs, NaNs, or unbounded loops).
   help cards, live regions, captions.
 - `src/audio.js` — WebAudio procedural synth; music/effects/ambience/voice
   buses; seeded sound variants.
-- `src/platform.js` — StarHermit host adapter: launch-token scope, `/api/v1/time`
-  sync with round-trip offset, score submission, presence. Offline-tolerant.
+- `src/platform.js` — StarHermit host adapter via the SDK: identity, cloud
+  save, settings, bindings, read-only boards. No own-server calls.
 - `server.js` — static host + API: score validation by deterministic replay,
   tie-breaks (completion → invalid actions → time → session id), rate limits,
   durable JSON boards.
@@ -56,9 +55,9 @@ immutability, and fuzz runs (no hangs, NaNs, or unbounded loops).
 ## Modes
 
 Learn (5 interactive lessons) · Journey (40 authored stages across 5 themes)
-· Daily (shared UTC seed, ranked when hosted) · Practice (3 difficulties,
+· Daily (shared UTC seed) · Practice (3 difficulties,
 undo + hints, unrated) · Challenges (move budget, clock, narrow gaps, drift
-storm, long tower, smash gauntlet) · Score chase (local + validated global
+storm, long tower, smash gauntlet) · Score chase (local + platform global
 boards, friends filter).
 
 ## Accessibility

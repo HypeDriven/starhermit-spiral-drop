@@ -18,14 +18,10 @@
  * a visible control. No game code is modified.
  *
  * Serving: the repo ships `server.js` (the StarHermit authoritative script
- * declared by starhermit.txt). The game is fully playable offline — when
- * `/api/v1/time` is unavailable the platform sets `hosted=false` and every
- * local mode (journey, practice, learn, results) works without the backend.
- * So, per the sibling-test convention (blockstead/balance-spire/picture-logic),
- * this test embeds a minimal node:http static server on an ephemeral port and
- * answers /api/* with 404 so the client degrades to its documented offline
- * path. If the UI ever starts requiring the real backend this can be swapped
- * for spawning `server.js`; today it is not needed.
+ * declared by starhermit.txt). Without a launch token the game is fully
+ * playable offline and makes no own-server calls, so this test embeds a
+ * minimal node:http static server (no /api routes) on an ephemeral port and
+ * fails on any same-origin /api or /ws request.
  *
  * Note: webgl is exercised via swiftshader (`--enable-unsafe-swiftshader`);
  * benign software-GPU console lines are filtered (see browserNoise below).
@@ -66,10 +62,6 @@ const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/') p = '/index.html';
-    // No StarHermit backend here: 404 /api/* so the platform adapter (init →
-    // syncTime) degrades to documented offline mode (hosted=false) without
-    // hanging. The 404 is benign and filtered by the console/response hooks.
-    if (p.startsWith('/api/')) { res.writeHead(404).end('not found'); return; }
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
     const data = await readFile(file);
@@ -81,6 +73,14 @@ const server = http.createServer(async (req, res) => {
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const BASE = `http://127.0.0.1:${server.address().port}`;
+
+// Standalone (no launch token) must make zero same-origin /api or /ws requests.
+function watchOwnServer(page, errors) {
+  page.on('request', (req) => {
+    const u = new URL(req.url());
+    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
+  });
+}
 
 let failures = 0;
 const ok = (name) => console.log(`ok - ${name}`);
@@ -171,13 +171,13 @@ async function runPass(browser, name, ctxOpts, { full }) {
   page.on('console', (m) => {
     if (m.type() !== 'error' || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
-    if (/Failed to load resource/.test(m.text()) && /\/api\//.test(url)) return;
     errors.push(`console: ${m.text()}`);
   });
   page.on('response', (r) => {
     const u = r.url();
-    if (r.status() >= 400 && !/\/api\/|\/favicon/.test(u)) errors.push(`http ${r.status()}: ${u}`);
+    if (r.status() >= 400 && !/\/favicon/.test(u)) errors.push(`http ${r.status()}: ${u}`);
   });
+  watchOwnServer(page, errors);
 
   const click = (sel) => ctxOpts.hasTouch ? page.tap(sel) : page.click(sel);
 
@@ -310,9 +310,10 @@ async function graphicsPass(browser, name, ctxOpts) {
     if (m.type() !== 'error' && m.type() !== 'warning') return;
     if (browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
-    if (/Failed to load resource/.test(m.text()) && /\/api\/|favicon/.test(url)) return;
+    if (/Failed to load resource/.test(m.text()) && /favicon/.test(url)) return;
     problems.push(`console ${m.type()}: ${m.text()}`);
   });
+  watchOwnServer(page, problems);
   const click = (sel) => ctxOpts.hasTouch ? page.tap(sel) : page.click(sel);
   const openGraphics = async () => {
     await page.waitForSelector('#screens .screen .panel h1');

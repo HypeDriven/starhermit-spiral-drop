@@ -96,7 +96,9 @@ export function createUI(actions) {
           h('button', { class: 'ghost', onclick: actions.onShowLearn }, 'Learn to Play'),
           h('button', { class: 'ghost', onclick: actions.onShowScores }, 'Scores'),
           h('button', { class: 'ghost', onclick: actions.onShowSettings }, 'Settings'),
-          h('button', { class: 'ghost', onclick: actions.onShowHelp }, 'How to Play')
+          h('button', { class: 'ghost', onclick: actions.onShowHelp }, 'How to Play'),
+          data.signInLabel ? h('button', { class: 'ghost', id: 'btn-signin', onclick: actions.onSignIn }, data.signInLabel) : null,
+          data.inviteLabel ? h('button', { class: 'ghost', id: 'btn-invite', onclick: actions.onInvite }, data.inviteLabel) : null
         ),
         h('p', { class: 'sub' }, data.summary)
       );
@@ -244,7 +246,7 @@ export function createUI(actions) {
         h('div', { class: 'rule-card' }, h('strong', null, 'Rotate'), h('p', null, kbd(bindings.left), ' / ', kbd(bindings.right), ', the round arrow buttons, drag sideways, or a gamepad stick. The ball never moves sideways — only the tower turns.')),
         h('div', { class: 'rule-card' }, h('strong', null, 'Danger sectors'), h('p', null, 'Striped arcs. Landing on one ends the run. They are striped as well as colored, so color is never the only signal.')),
         h('div', { class: 'rule-card' }, h('strong', null, 'Combos & smashing'), h('p', null, 'Fall through 3+ rings without landing to charge the ball. A charged ball smashes straight through one danger sector. Centered drops earn precision bonuses.')),
-        h('div', { class: 'rule-card' }, h('strong', null, 'Other keys'), h('p', null, kbd('Esc') + ' pause · ', kbd(bindings.undo), ' undo (practice) · ', kbd(bindings.hint), ' hint · ', kbd('Enter'), ' confirm')),
+        h('div', { class: 'rule-card' }, h('strong', null, 'Other keys'), h('p', null, kbd(bindings.pause), ' pause · ', kbd(bindings.undo), ' undo (practice) · ', kbd(bindings.hint), ' hint · ', kbd('Enter'), ' confirm')),
         h('div', { class: 'btn-row' }, backButton(actions.onHome))
       );
     });
@@ -402,7 +404,6 @@ export function createUI(actions) {
           h('div', { class: 'kv' }, h('span', null, 'Invalid actions'), h('span', null, String(r.stats.invalidActions)))),
         r.stars != null ? h('p', null, 'Journey stars: ' + '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars)) : null,
         r.achievements && r.achievements.length ? h('p', null, '🏆 ' + r.achievements.join(', ')) : null,
-        r.rankLine ? h('p', { class: 'sub' }, r.rankLine) : null,
         h('div', { class: 'btn-row' },
           h('button', { class: 'big', onclick: won && r.nextLabel ? actions.onNext : actions.onRestart, autofocus: true }, won && r.nextLabel ? 'Next: ' + r.nextLabel : 'Retry'),
           r.nextLabel && won ? h('button', { class: 'ghost', onclick: actions.onRetry }, 'Replay this stage') : null,

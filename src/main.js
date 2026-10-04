@@ -6,12 +6,18 @@ import { createRenderer, CAM } from './render.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createPlatform } from './platform.js';
+import { shStrings } from './sh-strings.js';
 
 const R = window.SpiralRules;
 const C = window.SpiralContent;
 
 const DT = 1 / R.TICK_RATE;
-const BINDINGS = { left: '← / A', right: '→ / D', undo: 'U', hint: 'H' };
+// Help labels for the effective key bindings (platform overrides applied).
+function keyLabels() {
+  return { left: platform.keyLabel('left'), right: platform.keyLabel('right'), pause: platform.keyLabel('pause'),
+    undo: platform.keyLabel('undo'), hint: platform.keyLabel('hint') };
+}
+const SH_TEXT = shStrings(typeof navigator !== 'undefined' && navigator.language);
 
 const ACHIEVEMENTS = [
   { key: 'first_clear', name: 'First Descent', desc: 'Complete any stage.' },
@@ -53,7 +59,18 @@ const telemetry = Object.assign({
   starts: 0, tutorialSteps: 0, roundEnds: 0, retries: 0, settingsChanges: 0, errors: 0
 }, loadJSON('spiraldrop.telemetry.v1', {}));
 
-function saveSettings() { saveJSON('spiraldrop.settings.v1', settings); syncCloud(); }
+// Settings are also mirrored to the platform settings KV once its values
+// have been applied at boot (so local defaults never overwrite them).
+let settingsKvReady = false;
+function saveSettings() {
+  saveJSON('spiraldrop.settings.v1', settings);
+  syncCloud();
+  if (settingsKvReady) {
+    const patch = {};
+    for (const k of CLOUD_SETTINGS_KEYS) patch[k] = settings[k];
+    platform.pushSettings(patch);
+  }
+}
 function saveProgress() { saveJSON('spiraldrop.progress.v1', progress); syncCloud(); }
 function bumpTel(key) { telemetry[key] = (telemetry[key] || 0) + 1; saveJSON('spiraldrop.telemetry.v1', telemetry); syncCloud(); }
 
@@ -181,10 +198,10 @@ function modeSetupInfo(kind, id) {
   if (kind === 'daily') {
     return {
       title: daily.name,
-      description: 'One shared seed per UTC day. Everyone gets the same tower. Best valid run is submitted.',
-      duration: '1–2 min', ranked: platform.hosted, assists: 'none',
-      rules: ['Same seed and ruleset for all players today.', 'Score is validated by deterministic replay.'],
-      onStart: () => startRun(daily, 'daily', { allowUndo: false, ranked: true })
+      description: 'One shared seed per UTC day. Everyone gets the same tower. Your best run is kept.',
+      duration: '1–2 min', ranked: false, assists: 'none',
+      rules: ['Same seed and ruleset for all players today.', 'No undo or hints.'],
+      onStart: () => startRun(daily, 'daily', { allowUndo: false })
     };
   }
   if (kind === 'learn') {
@@ -219,7 +236,6 @@ function startRun(content, mode, opts) {
   ui.showHud(true);
   audio.unlock();
   audio.setIntensity(0);
-  platform.startActivity(mode, content.id);
   bumpTel('starts');
   runCountdown();
 }
@@ -278,7 +294,6 @@ function resumeGame() {
 function leaveToTitle() {
   clearCountdown();
   stopRotation();
-  platform.endActivity();
   session.phase = 'title';
   session.resumeWithCountdown = false;
   session.state = null;
@@ -327,27 +342,14 @@ function onTerminal() {
       progress.dailyStreak.last = today;
     }
   }
-  // best scores (local) + ranked submission
+  // best scores (local only; nothing is submitted)
   const bestKey = session.content.id.startsWith('daily-') ? session.content.id : session.content.id.split('-').slice(0, 2).join('-');
   if (won && total > (progress.bestScores[bestKey] || 0)) progress.bestScores[bestKey] = total;
   saveProgress();
 
   const env = R.buildEnvelope(s, session.startedAt);
-  env.playerName = platform.playerName || null; // server labels unnamed entries 'guest'
   session.replayEnv = env;
-  let rankLine = null;
-  if (session.opts.ranked && won) {
-    if (platform.hosted) {
-      rankLine = 'Submitting for validation…';
-      platform.submitScore(env)
-        .then((res) => ui.toast(res.validated ? 'Score validated and ranked.' : 'Score recorded (casual board).'))
-        .catch((e) => ui.toast(e.rateLimited ? 'Rate limited — score kept locally.' : 'Submission failed — score kept locally.'));
-    } else {
-      rankLine = 'Offline — ranked submission needs the hosted version.';
-    }
-  }
 
-  platform.endActivity();
   session.phase = 'results';
   const reasonText = {
     'completed': 'Base Reached!',
@@ -376,8 +378,7 @@ function onTerminal() {
     time: (s.tick / R.TICK_RATE).toFixed(1) + 's',
     stars,
     nextLabel,
-    achievements: newlyUnlocked,
-    rankLine
+    achievements: newlyUnlocked
   });
   audio.event(won ? 'win' : 'danger');
 }
@@ -425,10 +426,11 @@ function stopRotation() {
   }
 }
 
-const KEYMAP = {
-  ArrowLeft: -1, KeyA: -1,
-  ArrowRight: 1, KeyD: 1
-};
+// rotation direction for a key code, from the effective bindings
+function rotDir(code) {
+  const a = platform.actionFor(code);
+  return a === 'left' ? -1 : a === 'right' ? 1 : 0;
+}
 const held = new Set();
 // Keys must not be stolen from focused controls: arrows drive sliders/selects and
 // Space activates the focused button. Only claim them outside form/button focus.
@@ -439,43 +441,40 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   audio.unlock();
   const formTarget = isFormTarget(e.target);
-  if (e.code in KEYMAP) {
+  const dir = rotDir(e.code);
+  if (dir) {
     if (formTarget) return;
     held.add(e.code);
-    startRotate(KEYMAP[e.code]);
+    startRotate(dir);
     e.preventDefault();
     return;
   }
-  switch (e.code) {
-    case 'Escape':
+  switch (platform.actionFor(e.code)) {
+    case 'pause':
+      // let a focused button or control consume its own activation key
+      if (e.code !== 'Escape' && (formTarget || (e.target && e.target.tagName === 'BUTTON'))) return;
       if (session.phase === 'active' || session.phase === 'countdown') pauseGame();
       else if (session.phase === 'paused') resumeGame();
       else if (session.phase === 'replay') leaveToTitle();
       else if (session.phase === 'title' && ui.isScreenOpen) showTitle();
+      if (e.code !== 'Escape') e.preventDefault();
       break;
-    case 'Space':
-      // let a focused button or control consume its own activation key
-      if (formTarget || (e.target && e.target.tagName === 'BUTTON')) return;
-      if (session.phase === 'active' || session.phase === 'countdown') pauseGame();
-      else if (session.phase === 'paused') resumeGame();
-      e.preventDefault();
-      break;
-    case 'KeyU':
+    case 'undo':
       if (formTarget) return;
       if (session.phase === 'active' && session.state.config.allowUndo) { sendCmd({ type: 'undo' }); }
       break;
-    case 'KeyH':
+    case 'hint':
       if (formTarget) return;
       if (session.phase === 'active' && (session.mode === 'practice' || session.mode === 'learn')) giveHint();
       break;
   }
 });
 window.addEventListener('keyup', (e) => {
-  if (e.code in KEYMAP) {
+  if (held.has(e.code)) {
     held.delete(e.code);
     // if the opposite direction key is still held, flip; else stop
     let dir = 0;
-    for (const code of held) dir = KEYMAP[code];
+    for (const code of held) dir = rotDir(code);
     if (dir === 0) stopRotation();
     else startRotate(dir);
     e.preventDefault();
@@ -604,7 +603,9 @@ function showTitle() {
       ' · ' + Object.keys(progress.achievements).length + '/5 achievements' +
       (platform.authenticated
         ? ' · ' + (platform.playerName || 'Player') + ' · ' + platform.syncLabel
-        : platform.hosted ? '' : ' · offline mode')
+        : ' · offline mode'),
+    signInLabel: platform.canSignIn() ? SH_TEXT.signIn : null,
+    inviteLabel: platform.inviteLink() ? SH_TEXT.invite : null
   });
 }
 
@@ -617,7 +618,14 @@ const ui = createUI({
   onShowLearn: () => ui.learn(C.LESSONS, progress),
   onShowScores: showScores,
   onShowSettings: () => ui.settings(settings, renderer.graphicsInfo),
-  onShowHelp: () => ui.help(BINDINGS),
+  onShowHelp: () => ui.help(keyLabels()),
+  onSignIn: () => platform.signIn(),
+  onInvite: async () => {
+    const link = platform.inviteLink();
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); ui.toast(SH_TEXT.copied); }
+    catch { ui.toast(SH_TEXT.copyFailed + ': ' + link, 5000); }
+  },
   onHome: () => { session.phase === 'paused' ? ui.pause() : showTitle(); },
   journeyUnlocked,
   onStartStage: (i) => ui.setup(modeSetupInfo('journey', i)),
@@ -681,9 +689,7 @@ async function showScores() {
   }
   ui.scores({
     local, global, friends, hosted: platform.hosted,
-    globalLabel: platform.authenticated
-      ? 'Global (platform leaderboard — read-only).'
-      : 'Global (validated replays).'
+    globalLabel: 'Global (platform leaderboard — read-only).'
   });
 }
 
@@ -836,7 +842,6 @@ window.SpiralDrop = { R, C, session, validateAll: () => C.journeyStages().map(st
 // ---------------- boot ----------------
 (async function boot() {
   await platform.init();
-  if (platform.timeSynced) daily = C.dailyFor(platform.now());
   // cloud save: the remote mirror wins on conflict; when the slot is empty
   // the local doc is uploaded so other devices converge on it
   if (platform.authenticated) {
@@ -845,7 +850,13 @@ window.SpiralDrop = { R, C, session, validateAll: () => C.journeyStages().map(st
       saveProgress();
     }
     if (!platform.cloudDoc) platform.cloudSave(collectCloudDoc());
+    // per-player settings KV: platform values win, then local changes mirror up
+    const kv = await platform.loadSettings();
+    for (const k of CLOUD_SETTINGS_KEYS) if (kv[k] !== undefined && kv[k] !== null) settings[k] = kv[k];
+    settingsKvReady = true;
+    saveSettings();
   }
+  platform.onSignedOut(() => ui.toast(SH_TEXT.signedOut, 4000));
   applySettings();
   showTitle();
   renderer.applyTheme(C.themeById('ember'), settings.cvdPalette);
