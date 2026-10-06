@@ -38,6 +38,8 @@ export function createUI(actions) {
   function toast(msg, ms) {
     toastEl.textContent = msg;
     toastEl.hidden = false;
+    // screens pad their top by the toast so it never covers a panel heading
+    document.documentElement.style.setProperty('--toast-h', toastEl.offsetHeight + 'px');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms || 2600);
   }
@@ -51,6 +53,9 @@ export function createUI(actions) {
   function open(build, opts) {
     lastFocus = document.activeElement;
     screensRoot.textContent = '';
+    // a round's cue caption does not carry over onto (or past) a panel
+    clearTimeout(captionTimer);
+    captionEl.classList.remove('show');
     const screen = h('div', { class: 'screen' + (opts && opts.transparent ? ' transparent-bg' : ''), role: 'dialog', 'aria-modal': 'true' });
     const panel = h('div', { class: 'panel', role: 'document' });
     // builders pass conditional children as null; native append would render

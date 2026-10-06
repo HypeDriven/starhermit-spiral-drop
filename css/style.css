@@ -81,6 +81,9 @@ body.left-handed #hud-bottom { flex-direction: row-reverse; }
   font-size: 0.9em; opacity: 0; transition: opacity 0.25s;
 }
 #caption-line.show { opacity: 1; }
+/* In-play cue captions belong to the round: never show them under a menu,
+   pause or results panel (they read through the translucent panel). */
+body:has(#screens > .screen) #caption-line { visibility: hidden; }
 
 /* ---------- Countdown ---------- */
 #countdown {
@@ -99,7 +102,8 @@ body.left-handed #hud-bottom { flex-direction: row-reverse; }
 }
 .screen.transparent-bg { background: transparent; }
 .panel {
-  background: var(--ui-bg); backdrop-filter: blur(10px);
+  /* near-opaque: HUD chips and rotate buttons behind the panel must not read through */
+  background: var(--ui-panel-bg, rgba(14, 10, 26, 0.95)); backdrop-filter: blur(10px);
   border: 1px solid var(--ui-line); border-radius: var(--radius);
   padding: 22px 26px; max-width: min(680px, calc(94vw / var(--ui-scale, 1))); width: 100%;
   max-height: calc(100% - 24px); overflow-y: auto;
@@ -156,6 +160,8 @@ select, input[type="text"] {
   background: var(--ui-bg-solid); border: 1px solid var(--ui-accent); border-radius: 10px;
   padding: 10px 18px; z-index: 30; max-width: calc(80vw / var(--ui-scale, 1));
 }
+/* A toast over a menu/pause/results screen: start the panel below it. */
+body:has(#toast:not([hidden])) .screen { padding-top: calc(72px + var(--sat) + var(--toast-h, 0px)); }
 #fatal {
   position: absolute; inset: 0; z-index: 50; display: grid; place-items: center;
   background: #0b0817; padding: 24px; text-align: center;
@@ -173,7 +179,7 @@ select, input[type="text"] {
 /* ---------- Accessibility modes ---------- */
 body.large-text { --font-scale: 1.25; }
 body.high-contrast {
-  --ui-bg: rgba(0, 0, 0, 0.94); --ui-bg-solid: #000;
+  --ui-bg: rgba(0, 0, 0, 0.94); --ui-bg-solid: #000; --ui-panel-bg: rgba(0, 0, 0, 0.96);
   --ui-fg: #ffffff; --ui-dim: #e8e8e8; --ui-line: rgba(255,255,255,0.55);
   --ui-accent: #ffe600;
 }

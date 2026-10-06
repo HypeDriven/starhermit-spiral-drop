@@ -103,6 +103,7 @@ The Three.js canvas fills the game region but is never the only UI. Menus, text,
 - Color is reinforced by shape, texture, icon, or label. Include contrast-safe and common color-vision palettes.
 - Reduced-motion mode removes camera swoops, shake, parallax, rapid particles, and large scaling while preserving event timing.
 - Independent sliders for music, effects, ambience, and voice; captions/text cues for meaningful audio; no audio-only gameplay.
+- Cue captions (e.g. "Combo ×3") belong to the round: they are cleared and hidden while a menu, pause or results panel is open, and panels are near-opaque so HUD chips behind them don't read through. A toast shown over a screen pads that screen's top by the toast's height, so it never covers a panel heading.
 - Options for larger text, high contrast, left-handed controls, hold-versus-toggle, timing assistance, haptics off, and tutorial replay.
 - Announce Three.js board state through a concise navigable model rather than describing every decorative object.
 
