@@ -67,7 +67,9 @@ export function createUI(actions) {
     }
     screensRoot.append(screen);
     const focusable = panel.querySelector('button, select, input, [tabindex]');
-    if (focusable) focusable.focus();
+    // preventScroll: a tall panel must open at its heading, not scrolled to its first button
+    if (focusable) focusable.focus({ preventScroll: true });
+    panel.scrollTop = 0;
     return panel;
   }
   function close() {

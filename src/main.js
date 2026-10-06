@@ -390,8 +390,7 @@ function checkAchievements(s, won) {
       progress.achievements[key] = Date.now();
       const a = ACHIEVEMENTS.find(x => x.key === key);
       newly.push(a.name);
-      audio.event('achievement');
-      ui.toast('Achievement: ' + a.name + ' — ' + a.desc);
+      audio.event('achievement'); // listed on the results panel (no toast over it)
     }
   };
   if (won) unlock('first_clear');
