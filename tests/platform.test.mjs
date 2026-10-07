@@ -110,6 +110,7 @@ test('standalone: no network at all (no own-server probes)', async () => {
   assert.deepEqual(await p.loadSettings(), {});
   p.pushSettings({ muted: true });
   assert.deepEqual(await p.leaderboard('x', false), { entries: [] });
+  assert.deepEqual(await p.submitScore(900), { posted: false, rank: null });
   assert.equal(p.canSignIn(), false);
   assert.equal(p.actionFor('Space'), 'pause');
   assert.equal(sdkCalls.length, 0, 'no SDK/platform fetch');
@@ -122,4 +123,27 @@ test('on <id>.starhermit.com without a token: sign-in offered', async () => {
   globalThis.StarHermit = SDK.create({ window: win('', 'spiral-drop.starhermit.com'), fetch: async () => res(500) });
   const { createPlatform } = await import('../src/platform.js?onplatform');
   assert.equal(createPlatform().canSignIn(), true);
+});
+
+test('hosted: submitScore posts high-score and reads the rank', async () => {
+  globalThis.StarHermit = SDK.create({ window: win('#game_token=' + TOKEN), fetch: async () => res(404), setTimeout: () => 0, clearTimeout() {} });
+  globalThis.StarHermit.init();
+  const { createPlatform } = await import('../src/platform.js?submit');
+  const p = createPlatform();
+  const sent = [];
+  globalThis.StarHermit.submitScores = async (sc) => { sent.push(sc); return Object.keys(sc); };
+  globalThis.StarHermit.leaderboard = async (key) => ({ items: key === 'high-score' ? [{ userId: USER, rank: 6 }] : [] });
+  assert.deepEqual(await p.submitScore(2210.2), { posted: true, rank: 6 });
+  assert.deepEqual(sent, [{ 'high-score': 2210 }]);
+  globalThis.StarHermit.submitScores = async () => [];
+  assert.deepEqual(await p.submitScore(5), { posted: false, rank: null });
+});
+
+test('leaderboard line strings in every locale', async () => {
+  const { SH_STRINGS } = await import('../src/sh-strings.js');
+  assert.equal(Object.keys(SH_STRINGS).length, 9);
+  for (const [l, t] of Object.entries(SH_STRINGS)) {
+    for (const k of ['lbPosting', 'lbRank', 'lbPosted', 'lbNotPosted']) assert.ok(t[k], l + ' ' + k);
+    assert.ok(t.lbRank.includes('{rank}'));
+  }
 });

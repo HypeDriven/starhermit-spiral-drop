@@ -351,6 +351,8 @@ function onTerminal() {
   session.replayEnv = env;
 
   session.phase = 'results';
+  // Signed in: Journey, Daily and Challenge runs (no undo/hints) post to the platform board.
+  const postLb = platform.hosted && ['journey', 'daily', 'challenge'].includes(session.mode);
   const reasonText = {
     'completed': 'Base Reached!',
     'danger-sector': 'Shattered on a danger sector',
@@ -378,8 +380,18 @@ function onTerminal() {
     time: (s.tick / R.TICK_RATE).toFixed(1) + 's',
     stars,
     nextLabel,
-    achievements: newlyUnlocked
+    achievements: newlyUnlocked,
+    lbText: postLb ? SH_TEXT.lbPosting : null
   });
+  if (postLb) {
+    const runSession = session.replayEnv;
+    platform.submitScore(total).then(r => {
+      const line = document.getElementById('results-lb');
+      if (!line || session.replayEnv !== runSession) return;
+      line.textContent = !r.posted ? SH_TEXT.lbNotPosted
+        : r.rank ? SH_TEXT.lbRank.replace('{rank}', r.rank) : SH_TEXT.lbPosted;
+    });
+  }
   audio.event(won ? 'win' : 'danger');
 }
 

@@ -9,7 +9,8 @@
  *  - cloud save: slot game:<slug> via the SDK; localStorage stays the
  *    offline cache, the cloud slot is a mirror
  *  - settings KV + keyboard bindings (control.* in starhermit.txt)
- *  - leaderboards: read-only platform board, userIds resolved to nicknames
+ *  - leaderboards: platform board read (userIds resolved to nicknames) and
+ *    a finished run's total posted via submitScores (score-script.js)
  *  - invite link / sign-in button support
  *
  * The game never calls its own server routes (no time sync, score
@@ -106,6 +107,20 @@ export function createPlatform() {
 
     async leaderboard(contentId, friendsOnly) {
       return authed() ? platformLeaderboard(friendsOnly) : { entries: [] };
+    },
+
+    // post a finished run's total to the `high-score` board (score-script.js);
+    // resolves { posted, rank } — the player's rank there, or null. Offline: no request.
+    async submitScore(total) {
+      const sh = SH();
+      if (!authed() || typeof sh.submitScores !== 'function') return { posted: false, rank: null };
+      const keys = await sh.submitScores({ 'high-score': Math.max(0, Math.round(total)) }).catch(() => []);
+      if (!keys.includes('high-score')) return { posted: false, rank: null };
+      try {
+        const r = await sh.leaderboard('high-score', { pageSize: 100 });
+        const me = (r.items || []).find(i => i.userId === sh.userId);
+        return { posted: true, rank: me ? me.rank : null };
+      } catch { return { posted: true, rank: null }; }
     },
 
     // cloud mirror of the local save doc; debounced 2 s + pagehide flush

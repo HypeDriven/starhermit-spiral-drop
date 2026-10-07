@@ -411,6 +411,7 @@ export function createUI(actions) {
           h('div', { class: 'kv' }, h('span', null, 'Invalid actions'), h('span', null, String(r.stats.invalidActions)))),
         r.stars != null ? h('p', null, 'Journey stars: ' + '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars)) : null,
         r.achievements && r.achievements.length ? h('p', null, '🏆 ' + r.achievements.join(', ')) : null,
+        r.lbText ? h('p', { class: 'sub', id: 'results-lb' }, r.lbText) : null,
         h('div', { class: 'btn-row' },
           h('button', { class: 'big', onclick: won && r.nextLabel ? actions.onNext : actions.onRestart, autofocus: true }, won && r.nextLabel ? 'Next: ' + r.nextLabel : 'Retry'),
           r.nextLabel && won ? h('button', { class: 'ghost', onclick: actions.onRetry }, 'Replay this stage') : null,

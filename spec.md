@@ -208,7 +208,8 @@ No module may mutate rules state except through a validated command. Rendering c
 
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Global and friends boards are read-only reads of the platform leaderboard when signed in; clients never submit scores. Personal bests stay local (cloud-saved when signed in).
+- Global and friends boards read the platform leaderboard when signed in. Personal bests stay local (cloud-saved when signed in).
+- When signed in, every finished Journey, Daily or Challenge run (won or lost) posts its total through `StarHermit.submitScores` (a practice session whose platform script `score-script.js` posts it to the `high-score` board: integer, higher is better, 0–1,000,000). The results panel shows "Posting score…", then "Leaderboard rank: #N" (or posted / not posted), localized in the nine locales (`src/sh-strings.js`). Practice and Learn post nothing; standalone posts nothing and shows no line.
 
 ### Sessions and transport
 - The initial game is solo. Use an authoritative JavaScript Game Script only for seeded daily sessions, replay validation, and durable achievement delivery; ordinary practice can run locally and offline after initial load.
@@ -216,7 +217,7 @@ No module may mutate rules state except through a validated command. Rendering c
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
 ### Publishing and operations
-- Keep the authoritative script inside the distribution and declare it with `server=server.js`. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
+- The platform script is `score-script.js` (canonical copy in the games repo's `tools/score-script.js`), declared with `server=score-script.js`; `server.js` is the local dev server. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
 - Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
 
