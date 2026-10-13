@@ -701,10 +701,10 @@ export function createRenderer(canvas, hooks) {
     // OutputPass tone-maps everything, so pre-darken it there to match.
     skyMat.uniforms.uGain.value = composer ? 0.5 : 1;
     if (composer) {
-      try { composer.render(); return; }
+      try { (globalThis.GameOptions ? globalThis.GameOptions.draw(composer.renderer, () => composer.render()) : composer.render()); return; }
       catch (e) { postFailed = true; composer = null; }
     }
-    renderer.render(scene, camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera));
   }
 
   // ---- adaptive resolution: average ~90 frames, step the render scale down

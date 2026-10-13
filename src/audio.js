@@ -55,7 +55,7 @@ export function createAudio(opts) {
   function playSample(clip) {
     const cached = sampleCache.get(clip);
     if (!cached || cached === 'loading') return false;
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), null) : ctx.createBufferSource());
     src.buffer = cached;
     src.connect(buses.effects);
     src.start();
@@ -74,7 +74,7 @@ export function createAudio(opts) {
       const g = ctx.createGain();
       g.gain.value = settings.muted ? 0 : settings[name];
       g.connect(master);
-      buses[name] = g;
+      buses[name] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(g, name) : g);
     }
     return ctx;
   }
@@ -97,7 +97,7 @@ export function createAudio(opts) {
   function blip(bus, freq, dur, type, gain, when, slide) {
     if (suppressSynth || !ensureCtx()) return;
     const t = (when || ctx.currentTime);
-    const o = ctx.createOscillator();
+    const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), bus) : ctx.createOscillator());
     const g = ctx.createGain();
     o.type = type || 'sine';
     o.frequency.setValueAtTime(freq, t);
@@ -116,7 +116,7 @@ export function createAudio(opts) {
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), bus) : ctx.createBufferSource());
     src.buffer = buf;
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass'; f.frequency.value = filterFreq || 1200;
@@ -188,7 +188,7 @@ export function createAudio(opts) {
     const t = ctx.currentTime;
     const barLen = intensity > 0.6 ? 1.6 : 2.4;
     for (const f of chord) {
-      const o = ctx.createOscillator();
+      const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), null) : ctx.createOscillator());
       const g = ctx.createGain();
       o.type = 'sine';
       o.frequency.value = f * (intensity > 0.3 ? 2 : 1);
@@ -211,7 +211,7 @@ export function createAudio(opts) {
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), null) : ctx.createBufferSource());
     src.buffer = buf; src.loop = true;
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass'; f.frequency.value = 240; f.Q.value = 0.4;
