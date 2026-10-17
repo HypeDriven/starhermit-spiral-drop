@@ -33,6 +33,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launchToken, stubStarHermit } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT = (stage, vp) => `/tmp/spiral-drop-e2e-${stage}-${vp}.png`;
@@ -75,10 +76,10 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const BASE = `http://127.0.0.1:${server.address().port}`;
 
 // Standalone (no launch token) must make zero same-origin /api or /ws requests.
-function watchOwnServer(page, errors) {
+function watchOwnServer(page, errors, state = {}) {
   page.on('request', (req) => {
     const u = new URL(req.url());
-    if (u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
+    if (!state.allowApi && u.origin === BASE && /^\/(api|ws)(\/|$)/.test(u.pathname)) errors.push(`own-server request: ${req.method()} ${u.pathname}`);
   });
 }
 
@@ -177,7 +178,8 @@ async function runPass(browser, name, ctxOpts, { full }) {
     const u = r.url();
     if (r.status() >= 400 && !/\/favicon/.test(u)) errors.push(`http ${r.status()}: ${u}`);
   });
-  watchOwnServer(page, errors);
+  const state = { allowApi: false };
+  watchOwnServer(page, errors, state);
 
   const click = (sel) => ctxOpts.hasTouch ? page.tap(sel) : page.click(sel);
 
@@ -288,12 +290,100 @@ async function runPass(browser, name, ctxOpts, { full }) {
       if (!grew) throw new Error(`touch rotate did not register (inputLog stayed ${before})`);
       ok(`${name}: real touchscreen tap on the on-screen rotate button registered`);
     }
+    await languageFlow(page, name, state);
   } finally {
     await context.close();
   }
 
   if (errors.length) throw new Error(`${name} pass had page errors:\n  ${errors.join('\n  ')}`);
   console.log(`ok - ${name}: no page errors`);
+}
+
+// ---------- Language + Report a problem (signed in against a stubbed StarHermit API) ----------
+// Mid-run: Automatic follows the account's preferredLanguage (fr-CA); choosing
+// Italian in Settings (opened from the pause screen) relabels the panel and the
+// HUD in place without ending the run, and saves ui.language; Report a problem
+// posts to /reports. The mobile pass also checks German at 390 px.
+async function languageFlow(page, name, state) {
+  const vw = page.viewportSize().width;
+  state.allowApi = true;
+  const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+  const panel = page.locator('#screens .screen .panel');
+  const button = (label) => panel.getByRole('button', { name: label, exact: true });
+  try {
+    await page.goto('about:blank');
+    await page.goto(BASE + '/index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA' && !!document.querySelector('#screens .screen .panel h1'), null, { timeout: 15000 });
+    const play = (await panel.locator('button.big').textContent()).trim();
+    if (!/^▶ Jouer — /.test(play)) throw new Error(`${name}: title not in French: "${play}"`);
+    await panel.locator('button.big').click();
+    await panel.getByRole('button', { name: 'Commencer', exact: true }).click();
+    await waitActive(page);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.SpiralDrop?.session?.phase === 'paused');
+    await button('Paramètres').click();
+    const choice = panel.locator('[data-game-language="choice"]');
+    await choice.scrollIntoViewIfNeeded();
+    const autoLabel = await choice.locator('option').first().textContent();
+    if (autoLabel !== 'Automatique — Français (Canada)') throw new Error(`${name}: Automatic label not resolved: "${autoLabel}"`);
+    if ((await page.locator('[data-game-language="choice"]').count()) !== 1) throw new Error(`${name}: expected exactly one language selector`);
+    const bb = await choice.boundingBox();
+    if (!bb || bb.x < 0 || bb.x + bb.width > vw + 1) throw new Error(`${name}: language select cut off (${JSON.stringify(bb)})`);
+    await choice.selectOption('it-IT');
+    await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+    await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]')?.textContent || ''));
+    if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error(`${name}: ui.language not saved: ${JSON.stringify(calls.settings)}`);
+    const checks = await page.evaluate(() => ({
+      heading: document.querySelector('#screens .screen .panel h2').textContent.trim(),
+      hud: document.getElementById('hud-progress').textContent.trim(),
+      undo: document.getElementById('btn-undo').textContent.trim(),
+      rot: document.getElementById('btn-rot-left').getAttribute('aria-label'),
+      gfx: document.getElementById('gfx-heading')?.textContent.trim(),
+      phase: window.SpiralDrop.session.phase,
+    }));
+    if (checks.heading !== 'Impostazioni' || !/^Livello /.test(checks.hud) || checks.undo !== 'Annulla' || checks.rot !== 'Ruota la torre a sinistra' || checks.gfx !== 'Grafica') {
+      throw new Error(`${name}: text not re-rendered: ${JSON.stringify(checks)}`);
+    }
+    if (checks.phase !== 'paused') throw new Error(`${name}: language change disturbed the run (${checks.phase})`);
+    await panel.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+    await panel.locator('[data-game-report="title"]').fill('Test report');
+    await panel.locator('[data-game-report="send"]').click();
+    await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]')?.textContent || ''));
+    if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error(`${name}: report not posted`);
+    await page.screenshot({ path: SHOT('language', name) });
+    if (vw < 500) {
+      await choice.selectOption('de-DE');
+      await page.waitForFunction(() => document.documentElement.lang === 'de-DE');
+      await sleep(120);
+      await page.screenshot({ path: SHOT('settings-de', name) });
+      await button('← Zurück').click();
+      await page.waitForFunction(() => document.querySelector('#screens .screen .panel h2')?.textContent.trim() === 'Pausiert');
+      await button('Fortsetzen').click();
+      await waitActive(page);
+      await sleep(300);
+      await page.screenshot({ path: SHOT('play-de', name) });
+      const layout = await page.evaluate(() => {
+        const r = (id) => document.getElementById(id).getBoundingClientRect();
+        const hit = (a, b) => a.width && b.width && a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+        const pause = r('btn-pause');
+        return {
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+          pauseCovered: hit(pause, r('hud-objective')) || hit(pause, r('hud-mid')),
+          objectiveClipped: (() => { const e = document.getElementById('hud-objective'); return e.scrollWidth > e.clientWidth + 2; })(),
+        };
+      });
+      if (layout.overflow > 1 || layout.pauseCovered) throw new Error(`${name}: German HUD layout problem ${JSON.stringify(layout)}`);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => window.SpiralDrop?.session?.phase === 'paused');
+      await button('Einstellungen').click();
+    }
+    await panel.locator('[data-game-language="choice"]').selectOption('auto');
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    ok(`${name}: Language — Automatic resolved to fr-CA, Italian relabelled the paused run live and saved ui.language, report posted`);
+  } finally {
+    await page.unroute(/\/api\/v1\//);
+    state.allowApi = false;
+  }
 }
 
 // ---------- Graphics settings pass ----------

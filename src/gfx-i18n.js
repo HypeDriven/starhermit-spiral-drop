@@ -1,6 +1,6 @@
 // Spiral Drop — strings for the Graphics settings panel in every supported
-// locale. The locale comes from navigator.language (exact tag, then the
-// language's first listed variant, then en-US).
+// locale. ui.js passes the game language (i18n.js currentLang()) and rebuilds
+// the panel on a language change.
 
 const STRINGS = {
   'en-US': {

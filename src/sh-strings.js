@@ -1,7 +1,7 @@
 /**
  * sh-strings.js — localized strings for the StarHermit account controls
- * (sign-in, invite link, sign-out notice, key-binding reset, leaderboard line). Locale follows
- * the Graphics panel's picker.
+ * (sign-in, invite link, sign-out notice, key-binding reset, leaderboard line). main.js passes
+ * the game language (i18n.js currentLang()).
  */
 import { pickLocale } from './gfx-i18n.js';
 

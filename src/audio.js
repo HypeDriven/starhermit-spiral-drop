@@ -92,7 +92,8 @@ export function createAudio(opts) {
     return 1 + ((variantSeed % 1000) / 1000 - 0.5) * 0.12;
   }
 
-  function caption(text) { if (captionCb) captionCb(text); }
+  // Captions are English i18n keys (+ vars); main.js translates them for display.
+  function caption(text, vars) { if (captionCb) captionCb(text, vars); }
 
   function blip(bus, freq, dur, type, gain, when, slide) {
     if (suppressSynth || !ensureCtx()) return;
@@ -134,12 +135,12 @@ export function createAudio(opts) {
     passThrough(e) {
       const k = Math.min(6, (e && e.streak) || 1);
       blip('effects', 520 + k * 90, 0.09, 'triangle', 0.16);
-      caption('Layer passed ×' + k);
+      caption('Layer passed ×{n}', { n: k });
     },
     land(e) {
       noiseBurst('effects', 0.09, 0.22, 700);
       blip('effects', 180 * variant(), 0.12, 'sine', 0.2);
-      if (e && e.falls > 1) { blip('effects', 700 + e.falls * 60, 0.15, 'triangle', 0.14, ctx ? ctx.currentTime + 0.05 : undefined); caption('Combo ×' + e.falls); }
+      if (e && e.falls > 1) { blip('effects', 700 + e.falls * 60, 0.15, 'triangle', 0.14, ctx ? ctx.currentTime + 0.05 : undefined); caption('Combo ×{n}', { n: e.falls }); }
       if (e && e.precision) { blip('effects', 990, 0.14, 'sine', 0.12, ctx ? ctx.currentTime + 0.1 : undefined); caption('Precision landing'); }
     },
     smash() {

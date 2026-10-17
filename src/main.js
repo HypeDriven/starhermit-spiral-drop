@@ -5,8 +5,9 @@
 import { createRenderer, CAM } from './render.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
-import { createPlatform } from './platform.js';
+import { createPlatform, mergeProgress } from './platform.js';
 import { shStrings } from './sh-strings.js';
+import { T, currentLang } from './i18n.js';
 
 const R = window.SpiralRules;
 const C = window.SpiralContent;
@@ -17,7 +18,8 @@ function keyLabels() {
   return { left: platform.keyLabel('left'), right: platform.keyLabel('right'), pause: platform.keyLabel('pause'),
     undo: platform.keyLabel('undo'), hint: platform.keyLabel('hint') };
 }
-const SH_TEXT = shStrings(typeof navigator !== 'undefined' && navigator.language);
+// StarHermit account strings in the current game language (sh-strings.js).
+const SH = () => shStrings(currentLang());
 
 const ACHIEVEMENTS = [
   { key: 'first_clear', name: 'First Descent', desc: 'Complete any stage.' },
@@ -76,46 +78,50 @@ function bumpTel(key) { telemetry[key] = (telemetry[key] || 0) + 1; saveJSON('sp
 
 // Cloud mirror of the local save doc (settings + progress + telemetry).
 // localStorage stays the offline cache; the platform slot is a remote mirror,
-// written debounced and flushed on pagehide. Remote wins on conflict.
+// written debounced and flushed on pagehide. Cloud and local progress merge
+// (mergeProgress); preferences follow the cloud copy at boot.
 const CLOUD_SETTINGS_KEYS = ['music', 'effects', 'ambience', 'voice', 'muted', 'reducedMotion', 'highContrast', 'cvdPalette', 'largeText', 'leftHanded', 'holdToRotate', 'captions', 'gfx'];
 const CLOUD_PROGRESS_KEYS = ['stages', 'lessons', 'achievements', 'lifetimeLayers', 'dailyStreak', 'bestScores', 'nextStage'];
 const CLOUD_TELEMETRY_KEYS = ['starts', 'tutorialSteps', 'roundEnds', 'retries', 'settingsChanges', 'errors'];
 function collectCloudDoc() { return { settings, progress, telemetry, savedAt: Date.now() }; }
 function syncCloud() { if (platform.hosted && platform.authenticated) platform.cloudSave(collectCloudDoc()); }
-function adoptCloudDoc(doc) {
-  if (!doc || typeof doc !== 'object') return false;
-  let any = false;
-  if (doc.settings) for (const k of CLOUD_SETTINGS_KEYS) if (k in doc.settings) { settings[k] = doc.settings[k]; any = true; }
-  if (doc.progress) for (const k of CLOUD_PROGRESS_KEYS) if (k in doc.progress) { progress[k] = doc.progress[k]; any = true; }
-  if (doc.telemetry) for (const k of CLOUD_TELEMETRY_KEYS) if (k in doc.telemetry) { telemetry[k] = doc.telemetry[k]; any = true; }
-  return any;
+/** Merge a cloud doc into the local state; true when the cloud lacked anything local. */
+function mergeCloudDoc(doc, adoptSettings) {
+  if (!doc || typeof doc !== 'object') return true;
+  if (adoptSettings && doc.settings) for (const k of CLOUD_SETTINGS_KEYS) if (k in doc.settings) settings[k] = doc.settings[k];
+  const merged = mergeProgress(doc.progress, progress);
+  const cloudBehind = JSON.stringify(mergeProgress(doc.progress, null)) !== JSON.stringify(merged);
+  for (const k of CLOUD_PROGRESS_KEYS) progress[k] = merged[k];
+  const tel = (doc.telemetry && typeof doc.telemetry === 'object') ? doc.telemetry : {};
+  for (const k of CLOUD_TELEMETRY_KEYS) telemetry[k] = Math.max(Number(telemetry[k]) || 0, Number(tel[k]) || 0);
+  return cloudBehind || !adoptSettings;
 }
 
 // ---------------- platform / audio ----------------
 const platform = createPlatform();
 const audio = createAudio(settings);
-audio.onCaption((t) => { if (settings.captions) ui.caption(t); });
+audio.onCaption((t, vars) => { if (settings.captions) ui.caption(T(t, vars)); });
 
 // ---------------- renderer (with fallback message) ----------------
 let renderer = null;
 const fatalEl = document.getElementById('fatal');
 function fatal(msg) {
   fatalEl.hidden = false;
-  fatalEl.innerHTML = '<div class="panel"><h1>Spiral Drop</h1><p>' + msg + '</p></div>';
+  fatalEl.innerHTML = '<div class="panel"><h1>Spiral Drop</h1><p></p></div>';
+  fatalEl.querySelector('p').textContent = msg;
 }
 try {
   renderer = createRenderer(document.getElementById('gl'), {
     cvdPatch: C.CVD_THEME_PATCH,
     onContextLost(kind) {
       if (kind === 'unavailable') return;
-      ui.announceUrgent('Graphics context lost — recovering.');
+      ui.announceUrgent(T('Graphics context lost — recovering.'));
       if (session.phase === 'active') pauseGame();
     },
-    onContextRestored() { ui.toast('Graphics recovered.'); }
+    onContextRestored() { ui.toast(T('Graphics recovered.')); }
   });
 } catch (e) {
-  fatal('Your browser could not create a WebGL context, so the 3D playfield is unavailable. ' +
-    'Your settings and progress are safe. Try updating your browser or enabling hardware acceleration.');
+  fatal(T('Your browser could not create a WebGL context, so the 3D playfield is unavailable. Your settings and progress are safe. Try updating your browser or enabling hardware acceleration.'));
   throw e;
 }
 renderer.setGraphics(settings.gfx || {});
@@ -160,57 +166,81 @@ function nextJourneyIndex() {
 
 function themeFor(content) { return C.themeById(content.theme || 'ember'); }
 
+/** Player-facing name of any run content (content.js names are English data). */
+function contentName(c) {
+  if (!c) return '';
+  if (c.id && c.id.startsWith('daily-') && c.day) return T('Daily Drop — {date}', { date: c.day });
+  return c.name ? T(c.name) : c.id;
+}
+
+// Setup screens: `text()` is re-evaluated on every (re)draw so a language change relabels them.
 function modeSetupInfo(kind, id) {
   if (kind === 'journey') {
     const st = stages[id];
     return {
-      title: 'Stage ' + (st.index + 1) + ' — ' + st.name,
-      description: 'Theme: ' + themeFor(st).name + '. Par ' + Math.round(st.parTicks / R.TICK_RATE) + 's.',
+      text: () => ({
+        title: T('Stage {n} — {name}', { n: st.index + 1, name: T(st.name) }),
+        description: T('Theme: {theme}. Par {n}s.', { theme: T(themeFor(st).name), n: Math.round(st.parTicks / R.TICK_RATE) }),
+        assists: T('none'),
+        rules: [T('Reach the base by dropping through every ring’s gap.'), T('Striped sectors end the run.'), T('Falls of 3+ rings charge a smash.')],
+      }),
       duration: Math.ceil(st.params.layers * 3 / 10) * 10 + 's',
-      ranked: false, assists: 'none',
-      rules: ['Reach the base by dropping through every ring’s gap.', 'Striped sectors end the run.', 'Falls of 3+ rings charge a smash.'],
+      ranked: false,
       onStart: () => startRun(st, 'journey', { allowUndo: false })
     };
   }
   if (kind === 'practice') {
     const pr = C.PRACTICE.find(p => p.id === id);
-    const content = { id: 'practice-' + pr.id + '-' + Date.now(), version: 1, seed: 'practice-' + pr.id + '-' + Math.floor(Math.random() * 1e9), params: pr.params, mechanics: { smashStreak: 3 }, theme: 'tide' };
+    const content = { id: 'practice-' + pr.id + '-' + Date.now(), version: 1, seed: 'practice-' + pr.id + '-' + Math.floor(Math.random() * 1e9), params: pr.params, mechanics: { smashStreak: 3 }, theme: 'tide', practice: pr.id };
     return {
-      title: 'Practice — ' + pr.name,
-      description: 'A fresh seeded tower. The seed is shown in results for inspection.',
+      text: () => ({
+        title: T('Practice — {name}', { name: T(pr.name) }),
+        description: T('A fresh seeded tower. The seed is shown in results for inspection.'),
+        assists: T('undo + hints'),
+        rules: [T('Undo rewinds the last drop.'), T('Hints point at the nearest gap.'), T('Nothing here affects ratings.')],
+      }),
       duration: Math.ceil(pr.params.layers * 3 / 10) * 10 + 's',
-      ranked: false, assists: 'undo + hints',
-      rules: ['Undo rewinds the last drop.', 'Hints point at the nearest gap.', 'Nothing here affects ratings.'],
+      ranked: false,
       onStart: () => startRun(content, 'practice', { allowUndo: true })
     };
   }
   if (kind === 'challenge') {
     const ch = C.CHALLENGES.find(c => c.id === id);
-    const rules = ['Reach the base under the constraint.'];
-    if (ch.moveLimitTicks) rules.push('Rotation budget: ' + Math.round(ch.moveLimitTicks / R.TICK_RATE) + 's of total turning.');
-    if (ch.timeLimitTicks) rules.push('Clock: ' + Math.round(ch.timeLimitTicks / R.TICK_RATE) + 's.');
     return {
-      title: ch.name, description: ch.description,
-      duration: '1–3 min', ranked: false, assists: 'none', rules,
+      text: () => {
+        const rules = [T('Reach the base under the constraint.')];
+        if (ch.moveLimitTicks) rules.push(T('Rotation budget: {n}s of total turning.', { n: Math.round(ch.moveLimitTicks / R.TICK_RATE) }));
+        if (ch.timeLimitTicks) rules.push(T('Clock: {n}s.', { n: Math.round(ch.timeLimitTicks / R.TICK_RATE) }));
+        return { title: T(ch.name), description: T(ch.description), assists: T('none'), rules };
+      },
+      duration: T('1–3 min'), ranked: false,
       onStart: () => startRun(ch, 'challenge', { allowUndo: false })
     };
   }
   if (kind === 'daily') {
     return {
-      title: daily.name,
-      description: 'One shared seed per UTC day. Everyone gets the same tower. Your best run is kept.',
-      duration: '1–2 min', ranked: false, assists: 'none',
-      rules: ['Same seed and ruleset for all players today.', 'No undo or hints.'],
+      text: () => ({
+        title: contentName(daily),
+        description: T('One shared seed per UTC day. Everyone gets the same tower. Your best run is kept.'),
+        assists: T('none'),
+        rules: [T('Same seed and ruleset for all players today.'), T('No undo or hints.')],
+        duration: T('1–2 min'),
+      }),
+      ranked: false,
       onStart: () => startRun(daily, 'daily', { allowUndo: false })
     };
   }
   if (kind === 'learn') {
     const l = C.LESSONS[id];
     return {
-      title: 'Lesson ' + (id + 1) + ' — ' + l.name,
-      description: l.brief,
-      duration: '<1 min', ranked: false, assists: 'hints',
-      rules: [l.brief],
+      text: () => ({
+        title: T('Lesson {n} — {name}', { n: id + 1, name: T(l.name) }),
+        description: T(l.brief),
+        assists: T('hints'),
+        rules: [T(l.brief)],
+        duration: T('<1 min'),
+      }),
+      ranked: false,
       onStart: () => startRun(l, 'learn', { allowUndo: true, lesson: l })
     };
   }
@@ -243,7 +273,7 @@ function startRun(content, mode, opts) {
 let countdownTimers = [];
 function runCountdown() {
   clearCountdown();
-  const seq = ['3', '2', '1', 'Drop!'];
+  const seq = ['3', '2', '1', T('Drop!')];
   seq.forEach((t, i) => {
     countdownTimers.push(setTimeout(() => {
       ui.countdown(t);
@@ -252,7 +282,7 @@ function runCountdown() {
         countdownTimers.push(setTimeout(() => {
           ui.countdown(null);
           session.phase = 'active';
-          ui.announce('Go. ' + objectiveText());
+          ui.announce(T('Go. {objective}', { objective: objectiveText() }));
         }, 550));
       }
     }, i * 700));
@@ -262,11 +292,11 @@ function clearCountdown() { countdownTimers.forEach(clearTimeout); countdownTime
 
 function objectiveText() {
   const c = session.content;
-  if (session.mode === 'learn') return session.opts.lesson.brief;
-  if (session.mode === 'daily') return 'Daily Drop — reach the base.';
-  if (session.mode === 'journey') return 'Stage ' + (c.index + 1) + ': ' + c.name + ' — reach the base.';
-  if (session.mode === 'challenge') return c.description;
-  return 'Reach the base.';
+  if (session.mode === 'learn') return T(session.opts.lesson.brief);
+  if (session.mode === 'daily') return T('Daily Drop — reach the base.');
+  if (session.mode === 'journey') return T('Stage {n}: {name} — reach the base.', { n: c.index + 1, name: T(c.name) });
+  if (session.mode === 'challenge') return T(c.description);
+  return T('Reach the base.');
 }
 
 function pauseGame() {
@@ -353,6 +383,12 @@ function onTerminal() {
   session.phase = 'results';
   // Signed in: Journey, Daily and Challenge runs (no undo/hints) post to the platform board.
   const postLb = platform.hosted && ['journey', 'daily', 'challenge'].includes(session.mode);
+  // Leaderboard line as a thunk: the results screen redraws it on a language change.
+  const lbState = { result: null };
+  const lbLine = () => {
+    const L = SH(), r = lbState.result;
+    return !r ? L.lbPosting : !r.posted ? L.lbNotPosted : r.rank ? L.lbRank.replace('{rank}', r.rank) : L.lbPosted;
+  };
   const reasonText = {
     'completed': 'Base Reached!',
     'danger-sector': 'Shattered on a danger sector',
@@ -365,7 +401,7 @@ function onTerminal() {
   ui.results({
     reason: s.terminal.reason,
     headline: reasonText[s.terminal.reason] || 'Run over',
-    subline: session.content.name || session.content.id,
+    subline: ((c) => () => contentName(c))(session.content),
     components: [
       ['Layers descended', s.score.layers],
       ['Combo bonuses', s.score.combo],
@@ -381,15 +417,15 @@ function onTerminal() {
     stars,
     nextLabel,
     achievements: newlyUnlocked,
-    lbText: postLb ? SH_TEXT.lbPosting : null
+    lbText: postLb ? lbLine : null
   });
   if (postLb) {
     const runSession = session.replayEnv;
     platform.submitScore(total).then(r => {
+      if (session.replayEnv !== runSession) return;
+      lbState.result = r;
       const line = document.getElementById('results-lb');
-      if (!line || session.replayEnv !== runSession) return;
-      line.textContent = !r.posted ? SH_TEXT.lbNotPosted
-        : r.rank ? SH_TEXT.lbRank.replace('{rank}', r.rank) : SH_TEXT.lbPosted;
+      if (line) line.textContent = lbLine();
     });
   }
   audio.event(won ? 'win' : 'danger');
@@ -421,7 +457,7 @@ function sendCmd(cmd) {
   const res = R.applyCommand(session.state, cmd);
   if (!res.ok && !res.duplicate) {
     audio.event('invalid');
-    ui.caption('Not available: ' + res.reason.replace(/-/g, ' '));
+    ui.caption(T('Action not available'));
   }
 }
 function startRotate(dir) {
@@ -497,9 +533,9 @@ window.addEventListener('blur', () => { held.clear(); stopRotation(); });
 
 function giveHint() {
   const hint = R.hint(session.state);
-  const msg = hint.action === 'wait' ? 'Gap aligned — hold still!' :
-    hint.action === 'rotateLeft' ? 'Rotate left (' + Math.round(hint.degreesOff) + '° to go)' :
-    hint.action === 'rotateRight' ? 'Rotate right (' + Math.round(hint.degreesOff) + '° to go)' : 'Keep going.';
+  const msg = hint.action === 'wait' ? T('Gap aligned — hold still!') :
+    hint.action === 'rotateLeft' ? T('Rotate left ({n}° to go)', { n: Math.round(hint.degreesOff) }) :
+    hint.action === 'rotateRight' ? T('Rotate right ({n}° to go)', { n: Math.round(hint.degreesOff) }) : T('Keep going.');
   ui.toast(msg);
   ui.announce(msg);
 }
@@ -603,22 +639,23 @@ function pollGamepad() {
 }
 
 // ---------------- ui actions ----------------
-function showTitle() {
+function titleData() {
   const ni = nextJourneyIndex();
   const done = Object.keys(progress.stages).length;
   const dailyDone = progress.dailyStreak.last === daily.day;
-  ui.title({
-    nextLabel: done === 0 ? 'start the Journey' : 'Stage ' + (ni + 1) + ' — ' + stages[ni].name,
+  return {
+    nextLabel: done === 0 ? T('start the Journey') : T('Stage {n} — {name}', { n: ni + 1, name: T(stages[ni].name) }),
     dailyDone,
-    summary: done + '/' + stages.length + ' journey stages · daily streak ' + progress.dailyStreak.count +
-      ' · ' + Object.keys(progress.achievements).length + '/5 achievements' +
-      (platform.authenticated
-        ? ' · ' + (platform.playerName || 'Player') + ' · ' + platform.syncLabel
-        : ' · offline mode'),
-    signInLabel: platform.canSignIn() ? SH_TEXT.signIn : null,
-    inviteLabel: platform.inviteLink() ? SH_TEXT.invite : null
-  });
+    summary: T('{done}/{total} journey stages · daily streak {streak} · {ach}/5 achievements', {
+      done, total: stages.length, streak: progress.dailyStreak.count, ach: Object.keys(progress.achievements).length,
+    }) + (platform.authenticated
+      ? ' · ' + (platform.playerName || T('Player')) + ' · ' + T(platform.syncLabel)
+      : ' · ' + T('offline mode')),
+    signInLabel: platform.canSignIn() ? SH().signIn : null,
+    inviteLabel: platform.inviteLink() ? SH().invite : null
+  };
 }
+function showTitle() { ui.title(titleData); }
 
 const ui = createUI({
   onPlay: () => { ui.close(); ui.setup(modeSetupInfo('journey', nextJourneyIndex())); },
@@ -634,8 +671,8 @@ const ui = createUI({
   onInvite: async () => {
     const link = platform.inviteLink();
     if (!link) return;
-    try { await navigator.clipboard.writeText(link); ui.toast(SH_TEXT.copied); }
-    catch { ui.toast(SH_TEXT.copyFailed + ': ' + link, 5000); }
+    try { await navigator.clipboard.writeText(link); ui.toast(SH().copied); }
+    catch { ui.toast(SH().copyFailed + ': ' + link, 5000); }
   },
   onHome: () => { session.phase === 'paused' ? ui.pause() : showTitle(); },
   journeyUnlocked,
@@ -656,7 +693,7 @@ const ui = createUI({
   onWatchReplay: watchReplay,
   onReplayTutorial: () => { ui.close(); ui.setup(modeSetupInfo('learn', 0)); },
   onResetData: () => {
-    if (confirm('Erase all local Spiral Drop progress and settings?')) {
+    if (confirm(T('Erase all local Spiral Drop progress and settings?'))) {
       localStorage.removeItem('spiraldrop.settings.v1');
       localStorage.removeItem('spiraldrop.progress.v1');
       localStorage.removeItem('spiraldrop.telemetry.v1');
@@ -685,9 +722,23 @@ function applySettings() {
   audio.setMuted(settings.muted);
 }
 
+/** Name for a local best-score key (journey stage, daily, challenge, practice preset, lesson). */
+function bestKeyName(k) {
+  if (k.startsWith('daily-')) return T('Daily Drop — {date}', { date: k.slice(6) });
+  const st = stages.find((x) => x.id === k);
+  if (st) return T('Stage {n} — {name}', { n: st.index + 1, name: T(st.name) });
+  const ch = C.CHALLENGES.find((x) => x.id === k);
+  if (ch) return T(ch.name);
+  const pr = k.startsWith('practice-') && C.PRACTICE.find((x) => x.id === k.slice(9));
+  if (pr) return T('Practice — {name}', { name: T(pr.name) });
+  const l = C.LESSONS.find((x) => x.id === k);
+  if (l) return T(l.name);
+  return k;
+}
+
 async function showScores() {
   const local = Object.entries(progress.bestScores)
-    .map(([k, v]) => ({ name: k, score: v }))
+    .map(([k, v]) => ({ name: k, label: () => bestKeyName(k), score: v }))
     .sort((a, b) => b.score - a.score);
   let global = [], friends = [];
   if (platform.hosted) {
@@ -700,7 +751,7 @@ async function showScores() {
   }
   ui.scores({
     local, global, friends, hosted: platform.hosted,
-    globalLabel: 'Global (platform leaderboard — read-only).'
+    globalLabel: 'Global (platform leaderboard — read-only).' // English key; ui.js translates
   });
 }
 
@@ -715,8 +766,8 @@ function watchReplay() {
   session.acc = 0;
   session.prev = { angle: session.state.towerAngle, ballY: session.state.ball.y };
   ui.showHud(true);
-  ui.toast('Replay — Esc to exit');
-  ui.announce('Watching replay of the recorded run.');
+  ui.toast(T('Replay — Esc to exit'));
+  ui.announce(T('Watching replay of the recorded run.'));
 }
 
 // ---------------- fixed-timestep loop ----------------
@@ -751,7 +802,7 @@ function frame(now) {
       }
       if (s.phase === 'terminal') {
         if (session.phase === 'replay') {
-          ui.toast('Replay finished.');
+          ui.toast(T('Replay finished.'));
           leaveToTitle();
         } else {
           onTerminal();
@@ -766,8 +817,8 @@ function frame(now) {
         progress.lessons[session.opts.lesson.id] = true;
         saveProgress();
         bumpTel('tutorialSteps');
-        ui.toast('Good! Rotation mastered — now reach the base, or leave from pause.');
-        ui.announce('Lesson goal complete.');
+        ui.toast(T('Good! Rotation mastered — now reach the base, or leave from pause.'));
+        ui.announce(T('Lesson goal complete.'));
       }
     }
   }
@@ -853,21 +904,33 @@ window.SpiralDrop = { R, C, session, validateAll: () => C.journeyStages().map(st
 // ---------------- boot ----------------
 (async function boot() {
   await platform.init();
-  // cloud save: the remote mirror wins on conflict; when the slot is empty
-  // the local doc is uploaded so other devices converge on it
+  // cloud save: progress merges with the cloud copy (preferences follow the
+  // cloud); the merge is uploaded when the cloud lacked anything local, so
+  // other devices converge on it. Later writes are conditional; when another
+  // device saved first, the reloaded doc is merged the same way and saved.
+  platform.onConflict((doc) => {
+    mergeCloudDoc(doc, false);
+    saveJSON('spiraldrop.progress.v1', progress);
+    saveJSON('spiraldrop.telemetry.v1', telemetry);
+    platform.cloudSave(collectCloudDoc());
+    if (session.phase === 'title' && !session.state && ui.isScreenOpen) showTitle();
+  });
   if (platform.authenticated) {
-    if (adoptCloudDoc(platform.cloudDoc)) {
-      saveSettings();
-      saveProgress();
-    }
-    if (!platform.cloudDoc) platform.cloudSave(collectCloudDoc());
+    const upload = mergeCloudDoc(platform.cloudDoc, true);
+    saveJSON('spiraldrop.settings.v1', settings);
+    saveJSON('spiraldrop.progress.v1', progress);
+    saveJSON('spiraldrop.telemetry.v1', telemetry);
+    if (upload || !platform.cloudDoc) platform.cloudSave(collectCloudDoc());
     // per-player settings KV: platform values win, then local changes mirror up
     const kv = await platform.loadSettings();
     for (const k of CLOUD_SETTINGS_KEYS) if (kv[k] !== undefined && kv[k] !== null) settings[k] = kv[k];
     settingsKvReady = true;
     saveSettings();
   }
-  platform.onSignedOut(() => ui.toast(SH_TEXT.signedOut, 4000));
+  platform.onSignedOut(() => ui.toast(SH().signedOut, 4000));
+  // Language change (Settings → Language): redraw the open screen and the HUD in place.
+  document.addEventListener('sd-language', () => ui.relocalize());
+  ui.labelStatic();
   applySettings();
   showTitle();
   renderer.applyTheme(C.themeById('ember'), settings.cvdPalette);
