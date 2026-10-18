@@ -427,6 +427,7 @@ async function graphicsPass(browser, name, ctxOpts) {
     await page.selectOption('#gfx-preset', 'high');
     await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high');
     if (!/2048² shadows/.test(await page.textContent('#gfx-summary'))) throw new Error('High preset summary missing its shadow cost');
+    if (!/ · Level 0 · /.test(await page.textContent('#gfx-summary'))) throw new Error(`summary lacks the hardware level: ${await page.textContent('#gfx-summary')}`);
     // override one category (and one cheap-to-render tweak for software GL)
     await page.locator('#gfx-bloom').scrollIntoViewIfNeeded();
     await page.selectOption('#gfx-bloom', 'off');

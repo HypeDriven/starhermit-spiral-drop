@@ -1,23 +1,60 @@
 // Spiral Drop — graphics quality model + Graphics panel strings (node --test).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PRESETS, CATEGORIES, detectPreset, resolve, presetTier, choosePreset, describe } from '../src/gfx.js';
+import { createRequire } from 'node:module';
+import { PRESETS, CATEGORIES, BUDGETS, budgetFor, detectLevel, presetForLevel, detectPreset, resolve, presetTier, choosePreset, describe } from '../src/gfx.js';
 import { GFX_LOCALES, gfxStrings, pickLocale } from '../src/gfx-i18n.js';
 
-test('detectPreset: software renderers get low, discrete GPUs high, others balanced', () => {
-  assert.equal(detectPreset('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)'), 'low');
-  assert.equal(detectPreset('llvmpipe (LLVM 15.0.7, 256 bits)'), 'low');
-  assert.equal(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)'), 'high');
-  assert.equal(detectPreset('ANGLE (AMD, AMD Radeon RX 6800 XT Direct3D11)'), 'high');
-  assert.equal(detectPreset('Apple M2 Pro'), 'high');
-  assert.equal(detectPreset('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)'), 'balanced');
-  assert.equal(detectPreset('Adreno (TM) 740'), 'balanced');
-  assert.equal(detectPreset(''), 'balanced');
+// The page loads src/gpu-level.js as a classic script (window.StarHermitGpu); here it is a CommonJS module.
+globalThis.StarHermitGpu = createRequire(import.meta.url)('../src/gpu-level.js');
+
+test('hardware level → preset: Low 0, Balanced 4, High 10, Ultra 17', () => {
+  const desk = { cores: 16, memoryGb: 8 };
+  assert.equal(detectLevel('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)', desk), 0);
+  assert.equal(detectPreset('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)', desk), 'low');
+  assert.equal(detectPreset('llvmpipe (LLVM 15.0.7, 256 bits)', desk), 'low');
+  assert.equal(detectPreset('ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', desk), 'low');
+  assert.equal(detectPreset('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)', desk), 'low');
+  assert.equal(detectPreset('ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11)', desk), 'balanced');
+  assert.equal(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce GTX 1070 Direct3D11 vs_5_0 ps_5_0, D3D11)', desk), 'high');
+  assert.equal(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)', desk), 'high');
+  assert.equal(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 Direct3D11 vs_5_0 ps_5_0, D3D11)', desk), 'ultra');
+  assert.equal(detectLevel('ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 Direct3D11 vs_5_0 ps_5_0, D3D11)', desk), 20);
+  assert.equal(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 Direct3D11 vs_5_0 ps_5_0, D3D11)', desk), 'ultra');
+  assert.equal(presetForLevel(3), 'low');
+  assert.equal(presetForLevel(9), 'balanced');
+  assert.equal(presetForLevel(16), 'high');
 });
 
-test('detectPreset: touch/mobile devices cap Auto at balanced', () => {
-  assert.equal(detectPreset('Apple M1', true), 'balanced');
-  assert.equal(detectPreset('SwiftShader', true), 'low');
+test('hardware level: phones and tablets never auto-select above Balanced', () => {
+  assert.ok(detectLevel('Adreno (TM) 740', { mobile: true }) <= 9);
+  assert.ok(['low', 'balanced'].includes(detectPreset('Adreno (TM) 740', { mobile: true })));
+  assert.equal(detectPreset('ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 Direct3D11)', { mobile: true }), 'balanced');
+  assert.equal(detectPreset('SwiftShader', { mobile: true }), 'low');
+});
+
+test('per-preset budgets: cheaper materials, tessellation and effects on lower presets', () => {
+  const kinds = PRESETS.map((p) => BUDGETS[p].material);
+  assert.deepEqual(kinds, ['lambert', 'standard', 'physical', 'physical']);
+  for (let i = 1; i < PRESETS.length; i++) {
+    const lo = BUDGETS[PRESETS[i - 1]], hi = BUDGETS[PRESETS[i]];
+    for (const k of ['curve', 'bevel', 'round', 'texture', 'puffs', 'motes', 'bloomRes', 'aoRes']) assert.ok(hi[k] >= lo[k], `${PRESETS[i]}.${k}`);
+  }
+  assert.equal(BUDGETS.low.panelBlur, false);
+  assert.equal(BUDGETS.balanced.panelBlur, false);
+  assert.equal(BUDGETS.high.panelBlur, true);
+  assert.equal(BUDGETS.balanced.bloomRes, 0.5);
+  assert.equal(BUDGETS.ultra.bloomRes, 1);
+  // counts scale with the level inside a preset, at most 2×, and Particles "low" trims them
+  assert.equal(budgetFor('high', 10).puffs, BUDGETS.high.puffs);
+  assert.ok(budgetFor('high', 16).puffs > BUDGETS.high.puffs);
+  assert.ok(budgetFor('high', 20).puffs <= 2 * BUDGETS.high.puffs);
+  assert.equal(budgetFor('balanced', 4, 'low').motes, 0);
+  assert.ok(budgetFor('balanced', 4, 'low').puffs < BUDGETS.balanced.puffs);
+  const r = resolve({ preset: 'ultra' }, 'low', 20);
+  assert.equal(r.level, 20);
+  assert.equal(r.budget.material, 'physical');
+  assert.equal(resolve({}, 'low', 0).budget.material, 'lambert');
 });
 
 test('resolve: auto follows the detected preset', () => {

@@ -15,7 +15,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { detectPreset, describe, resolve, SHADOW_MAP } from './gfx.js';
+import { detectLevel, presetForLevel, describe, resolve, SHADOW_MAP } from './gfx.js';
 
 // ---- Framing constants (authored, not magic offsets)
 export const CAM = {
@@ -38,8 +38,26 @@ export const TOWER = {
   visibleBelow: 14    // ring window below the ball
 };
 
-const MAX_PARTICLES = { low: 300, high: 2000 };
-const MOTES = { low: 0, high: 160 };
+// Lit surfaces per budget (gfx.js BUDGETS.material): Lambert on Low, Standard on Balanced, Physical
+// (clearcoat) on High/Ultra. Parameters a class doesn't have are dropped.
+const LIT = { lambert: THREE.MeshLambertMaterial, standard: THREE.MeshStandardMaterial, physical: THREE.MeshPhysicalMaterial };
+function litMaterial(kind, params) {
+  const m = new (LIT[kind] || THREE.MeshPhysicalMaterial)();
+  for (const [k, v] of Object.entries(params)) {
+    if (!(k in m)) continue;
+    if (m[k] && m[k].isColor) m[k].set(v); else m[k] = v;
+  }
+  return m;
+}
+
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
 
 // Colour grade + vignette (linear HDR in, before OutputPass tone mapping).
 const GradeShader = {
@@ -64,14 +82,15 @@ const GradeShader = {
 };
 
 // Subtle procedural grain for flat ring tops (luminance noise around white).
-function makeGrainTexture() {
+// `n` is the budget's texture size in px (gfx.js BUDGETS.texture).
+function makeGrainTexture(n = 128) {
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  c.width = c.height = n;
   const g = c.getContext('2d');
-  const img = g.createImageData(128, 128);
+  const img = g.createImageData(n, n);
   let seed = 1337;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 128 * 128; i++) {
+  for (let i = 0; i < n * n; i++) {
     const v = 232 + Math.floor(rnd() * 23);
     img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
     img.data[i * 4 + 3] = 255;
@@ -79,7 +98,7 @@ function makeGrainTexture() {
   g.putImageData(img, 0, 0);
   // faint concentric brushed streaks
   g.globalAlpha = 0.08; g.strokeStyle = '#000';
-  for (let y = 0; y < 128; y += 3) { g.beginPath(); g.moveTo(0, y + rnd()); g.lineTo(128, y + rnd()); g.stroke(); }
+  for (let y = 0; y < n; y += 3 * n / 128) { g.beginPath(); g.moveTo(0, y + rnd()); g.lineTo(n, y + rnd()); g.stroke(); }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(3, 3);
@@ -88,15 +107,15 @@ function makeGrainTexture() {
 }
 
 // Vertical fluting for the central pillar.
-function makeFluteTexture() {
+function makeFluteTexture(w = 256) {
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 8;
+  c.width = w; c.height = 8;
   const g = c.getContext('2d');
-  const grd = g.createLinearGradient(0, 0, 256, 0);
+  const grd = g.createLinearGradient(0, 0, w, 0);
   for (let i = 0; i <= 16; i++) {
     grd.addColorStop(Math.min(1, i / 16), i % 2 ? '#cfcfd8' : '#ffffff');
   }
-  g.fillStyle = grd; g.fillRect(0, 0, 256, 8);
+  g.fillStyle = grd; g.fillRect(0, 0, w, 8);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(1, 40);
@@ -136,8 +155,10 @@ function makeStripeTexture(base, stripe) {
 
 // annulus sector shape → flat extruded ring segment
 // `bevel` rounds the edges; the outline is inset by the bevel size so the
-// bevelled mesh keeps the same footprint as the logical sector.
-function ringSectorGeometry(rIn, rOut, thick, start, width, bevel) {
+// bevelled mesh keeps the same footprint as the logical sector. `curve` and
+// `bevelSegs` come from the preset's budget (gfx.js BUDGETS.curve/bevel): only
+// tessellation changes, never the footprint.
+function ringSectorGeometry(rIn, rOut, thick, start, width, bevel, curve = 24, bevelSegs = 2) {
   const b = bevel ? Math.min(0.035, thick * 0.25) : 0;
   const full = width >= Math.PI * 2 - 1e-6;
   const da = full ? 0 : b / ((rIn + rOut) / 2);
@@ -145,8 +166,8 @@ function ringSectorGeometry(rIn, rOut, thick, start, width, bevel) {
   shape.absarc(0, 0, rOut - b, start + da, start + width - da, false);
   shape.absarc(0, 0, rIn + b, start + width - da, start + da, true);
   const geo = new THREE.ExtrudeGeometry(shape, b
-    ? { depth: thick - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 28 }
-    : { depth: thick, bevelEnabled: false, curveSegments: 24 });
+    ? { depth: thick - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: bevelSegs, curveSegments: curve }
+    : { depth: thick, bevelEnabled: false, curveSegments: curve });
   if (b) geo.translate(0, 0, b);
   geo.rotateX(Math.PI / 2); // lay flat, top at y=0
   return geo;
@@ -175,8 +196,15 @@ export function createRenderer(canvas, hooks) {
   // ---- quality state (see gfx.js)
   const gpu = gpuName(renderer);
   const mobile = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  const detected = detectPreset(gpu, mobile);
-  let q = resolve({}, detected);
+  // StarHermit hardware level (gpu-level.js): renderer string + device facts (cores, memory, screen).
+  let sys = { mobile, webgl2: renderer.capabilities.isWebGL2 !== false };
+  try {
+    const G = globalThis.StarHermitGpu;
+    if (G) { const d = G.detectSystem(); sys = { ...sys, mobile: mobile || d.mobile, touch: d.touch, screen: d.screen, cores: d.cores, memoryGb: d.memoryGb, astc: d.astc }; }
+  } catch (e) { /* defaults */ }
+  const gpuLevel = detectLevel(gpu, sys);
+  const detected = presetForLevel(gpuLevel);
+  let q = resolve({}, detected, gpuLevel);
   let gfxJson = null;
   let adaptiveScale = 1;
   let frameTimes = [];
@@ -263,23 +291,53 @@ export function createRenderer(canvas, hooks) {
   scene.fog = new THREE.Fog(0x3a1c5f, 18, 70);
 
   // ---- pillar, base
-  const grainTex = makeGrainTexture();
-  const fluteTex = makeFluteTexture();
+  let grainTex = makeGrainTexture(q.budget.texture);
+  let fluteTex = makeFluteTexture(q.budget.texture * 2);
+  let texSize = q.budget.texture;
   const dotTex = makeDotTexture();
-  const pillarMat = new THREE.MeshPhysicalMaterial({ color: 0x4a2a6a, roughness: 0.55, metalness: 0.15 });
-  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(TOWER.pillarRadius, TOWER.pillarRadius, 200, 28), pillarMat);
+  // Lit materials of the budget's class (rebuilt when a preset changes the class; colours come from the theme).
+  let matKind = q.budget.material;
+  let pillarMat = litMaterial(matKind, { color: 0x4a2a6a, roughness: 0.55, metalness: 0.15 });
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(TOWER.pillarRadius, TOWER.pillarRadius, 200, q.budget.round), pillarMat);
   pillar.position.y = -100;
   pillar.receiveShadow = true;
   scene.add(pillar);
 
-  const baseMat = new THREE.MeshPhysicalMaterial({ color: 0x8be09a, roughness: 0.4, emissive: 0x2a7a3a, emissiveIntensity: 0.5 });
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(TOWER.ringOuter + 0.5, TOWER.ringOuter + 0.7, 0.3, 40), baseMat);
+  let baseMat = litMaterial(matKind, { color: 0x8be09a, roughness: 0.4, emissive: 0x2a7a3a, emissiveIntensity: 0.5 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(TOWER.ringOuter + 0.5, TOWER.ringOuter + 0.7, 0.3, Math.round(q.budget.round * 1.4)), baseMat);
   base.receiveShadow = true;
   scene.add(base);
 
   // ---- ball (state signaled by emissive + scale pulse, not color alone)
-  const ballMat = new THREE.MeshPhysicalMaterial({ color: 0xfff3d6, roughness: 0.25, metalness: 0.1, emissive: 0x000000 });
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(TOWER.ballRadius, 28, 20), ballMat);
+  let ballMat = litMaterial(matKind, { color: 0xfff3d6, roughness: 0.25, metalness: 0.1, emissive: 0x000000 });
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(TOWER.ballRadius, q.budget.round, Math.round(q.budget.round * 0.7)), ballMat);
+  let roundSegs = q.budget.round;
+  // Swap the lit materials to another class (Lambert / Standard / Physical) for a new budget.
+  function rebuildLitMaterials(kind) {
+    if (kind === matKind) return;
+    matKind = kind;
+    const old = [pillarMat, baseMat, ballMat];
+    pillarMat = pillar.material = litMaterial(kind, { color: 0x4a2a6a, roughness: 0.55, metalness: 0.15 });
+    baseMat = base.material = litMaterial(kind, { color: 0x8be09a, roughness: 0.4, emissive: 0x2a7a3a, emissiveIntensity: 0.5 });
+    ballMat = ball.material = litMaterial(kind, { color: 0xfff3d6, roughness: 0.25, metalness: 0.1, emissive: 0x000000 });
+    old.forEach((m) => m.dispose());
+  }
+  // Tessellation of the round props for a new budget (radii unchanged).
+  function rebuildRoundGeometry(n) {
+    if (n === roundSegs) return;
+    roundSegs = n;
+    const swap = (mesh, geo) => { mesh.geometry.dispose(); mesh.geometry = geo; };
+    swap(pillar, new THREE.CylinderGeometry(TOWER.pillarRadius, TOWER.pillarRadius, 200, n));
+    swap(base, new THREE.CylinderGeometry(TOWER.ringOuter + 0.5, TOWER.ringOuter + 0.7, 0.3, Math.round(n * 1.4)));
+    swap(ball, new THREE.SphereGeometry(TOWER.ballRadius, n, Math.round(n * 0.7)));
+  }
+  function rebuildTextures(n) {
+    if (n === texSize) return;
+    texSize = n;
+    grainTex.dispose(); fluteTex.dispose();
+    grainTex = makeGrainTexture(n);
+    fluteTex = makeFluteTexture(n * 2);
+  }
   ball.castShadow = true;
   scene.add(ball);
 
@@ -338,7 +396,7 @@ export function createRenderer(canvas, hooks) {
       if (cursor >= gapStart + Math.PI * 2 - 0.0001) break;
     }
     for (const s of segs) {
-      const geo = ringSectorGeometry(TOWER.ringInner, TOWER.ringOuter, TOWER.ringThick, s.start, s.width, q.detail === 'detailed');
+      const geo = ringSectorGeometry(TOWER.ringInner, TOWER.ringOuter, TOWER.ringThick, s.start, s.width, q.detail === 'detailed', q.budget.curve, q.budget.bevel);
       const mesh = new THREE.Mesh(geo, s.danger ? dangerMat : safeMat);
       mesh.castShadow = q.shadows !== 'off';
       mesh.receiveShadow = true;
@@ -348,7 +406,7 @@ export function createRenderer(canvas, hooks) {
     // rest-ring identification: rim highlight (selection = marker + rim, not bloom)
     if (isRestRing) {
       const rim = new THREE.Mesh(
-        ringSectorGeometry(TOWER.ringInner - 0.06, TOWER.ringInner, TOWER.ringThick + 0.06, 0, Math.PI * 2),
+        ringSectorGeometry(TOWER.ringInner - 0.06, TOWER.ringInner, TOWER.ringThick + 0.06, 0, Math.PI * 2, false, q.budget.curve * 2),
         ghostMat
       );
       v.group.add(rim);
@@ -443,11 +501,11 @@ export function createRenderer(canvas, hooks) {
     const dangerColor = highContrast ? '#ff2020' : pick('danger');
     skyMat.uniforms.accent.value.set(pick('accent')).convertSRGBToLinear();
     if (safeMat) { safeMat.dispose(); dangerMat.map.dispose(); dangerMat.dispose(); ghostMat.dispose(); }
-    safeMat = new THREE.MeshPhysicalMaterial({
+    safeMat = litMaterial(matKind, {
       color: safeColor, roughness: 0.35, metalness: 0.2,
       emissive: t.safeEmissive || '#000000', emissiveIntensity: 1
     });
-    dangerMat = new THREE.MeshPhysicalMaterial({
+    dangerMat = litMaterial(matKind, {
       color: dangerColor, roughness: 0.5, metalness: 0.05,
       map: makeStripeTexture(dangerColor, highContrast ? '#000000' : 'rgba(0,0,0,0.35)')
     });
@@ -466,7 +524,8 @@ export function createRenderer(canvas, hooks) {
   function applyMaterialDetail() {
     const det = q.detail === 'detailed';
     const env = q.reflections === 'on' ? 1 : 0;
-    const set = (m, o) => { if (!m) return; Object.assign(m, o); m.needsUpdate = true; };
+    // only the properties the budget's material class has (no clearcoat below High, no roughness on Lambert)
+    const set = (m, o) => { if (!m) return; for (const [k, v] of Object.entries(o)) if (k in m) m[k] = v; m.needsUpdate = true; };
     set(safeMat, { clearcoat: det ? 0.5 : 0, clearcoatRoughness: 0.28, roughness: det ? 0.34 : 0.35, map: det ? grainTex : null, envMapIntensity: 0.22 * env });
     set(dangerMat, { clearcoat: det ? 0.4 : 0, clearcoatRoughness: 0.35, envMapIntensity: 0.18 * env });
     set(ballMat, { clearcoat: det ? 1 : 0, clearcoatRoughness: 0.08, roughness: det ? 0.2 : 0.25, envMapIntensity: 0.6 * env });
@@ -502,7 +561,8 @@ export function createRenderer(canvas, hooks) {
         v.index = -2;
         ringByIndex.set(i, v);
       }
-      if (v.index !== i || lastRestRing !== restRing) {
+      // a new rest ring only changes the rims of the old and new rest rings
+      if (v.index !== i || (lastRestRing !== restRing && (i === restRing || i === lastRestRing))) {
         buildRingView(v, layer, i === restRing, i === restRing + 1);
         v.index = i;
       }
@@ -615,7 +675,7 @@ export function createRenderer(canvas, hooks) {
   let motes = null;
   function makeMotes() {
     if (motes) { scene.remove(motes.points); motes.points.geometry.dispose(); motes.points.material.dispose(); motes = null; }
-    const n = MOTES[q.particles] || 0;
+    const n = q.budget.motes;
     if (!n) return;
     const pos = new Float32Array(n * 3);
     const seed = new Float32Array(n);
@@ -649,7 +709,7 @@ export function createRenderer(canvas, hooks) {
 
   // ---- render path: direct render, or the post chain when a pass is enabled
   function postKeyFor(w, h) {
-    return q.post ? [q.ao, q.bloom, q.grade, q.antialias, w, h, pixelRatio].join('|') : 'none';
+    return q.post ? [q.ao, q.bloom, q.grade, q.antialias, w, h, pixelRatio, q.budget.bloomRes, q.budget.aoRes].join('|') : 'none';
   }
   function buildPost(w, h) {
     if (composer) { composer.renderTarget1.dispose(); composer.renderTarget2.dispose(); composer = null; }
@@ -664,7 +724,7 @@ export function createRenderer(canvas, hooks) {
       c.setSize(w, h);
       c.addPass(new RenderPass(scene, camera));
       if (q.ao !== 'off') {
-        const ao = new GTAOPass(scene, camera, pw, ph);
+        const ao = atScale(new GTAOPass(scene, camera, pw, ph), q.budget.aoRes);
         ao.output = GTAOPass.OUTPUT.Default;
         ao.blendIntensity = 0.7;
         ao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: q.ao === 'high' ? 16 : 8 });
@@ -673,7 +733,7 @@ export function createRenderer(canvas, hooks) {
       }
       if (q.bloom === 'on') {
         // high threshold: only the charged ball, rest-ring rim and sparks bloom
-        c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.42, 0.35, 0.9));
+        c.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.42, 0.35, 0.9), q.budget.bloomRes));
       }
       if (q.grade === 'on') c.addPass(new ShaderPass(GradeShader));
       c.addPass(new OutputPass());
@@ -753,7 +813,14 @@ export function createRenderer(canvas, hooks) {
     if (json === gfxJson) return;
     const prev = gfxJson === null ? null : q;
     gfxJson = json;
-    q = resolve(saved || {}, detected);
+    q = resolve(saved || {}, detected, gpuLevel);
+    const b = q.budget;
+    document.body.classList.toggle('gfx-panel-blur', !!b.panelBlur);
+    rebuildTextures(b.texture);
+    rebuildRoundGeometry(b.round);
+    const kindChanged = b.material !== matKind;
+    rebuildLitMaterials(b.material);
+    if (kindChanged && theme) applyTheme(theme, cvdPalette);
     const sm = SHADOW_MAP[q.shadows];
     renderer.shadowMap.enabled = sm > 0;
     key.castShadow = sm > 0;
@@ -765,11 +832,11 @@ export function createRenderer(canvas, hooks) {
     applyMaterialDetail();
     scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     // ring geometry (bevel, shadow casting) and particle pools depend on tiers
-    if (!prev || prev.detail !== q.detail || prev.shadows !== q.shadows) {
+    if (!prev || prev.detail !== q.detail || prev.shadows !== q.shadows || prev.budget.curve !== b.curve || prev.budget.bevel !== b.bevel) {
       for (const v of ringByIndex.values()) v.index = -2;
       lastRestRing = -99;
     }
-    if (!prev || prev.particles !== q.particles || prev.detail !== q.detail) { makePools(); makeMotes(); }
+    if (!prev || prev.particles !== q.particles || prev.detail !== q.detail || prev.budget.puffs !== b.puffs || prev.budget.motes !== b.motes) { makePools(); makeMotes(); }
     adaptiveScale = 1;
     frameTimes = [];
     postKey = null;
@@ -796,7 +863,7 @@ export function createRenderer(canvas, hooks) {
   function graphicsInfo() {
     const px = [Math.round(size[0] * pixelRatio), Math.round(size[1] * pixelRatio)];
     return {
-      gpu: gpu || 'unknown GPU', detected, resolved: q, pixels: px,
+      gpu: gpu || 'unknown GPU', level: gpuLevel, detected, resolved: q, pixels: px,
       summary: describe(q, px), fps: Math.round(fpsAvg), adaptiveScale,
       postFailed: postFailed && q.post
     };
@@ -806,7 +873,7 @@ export function createRenderer(canvas, hooks) {
   function makePools() {
     if (puffPool) { scene.remove(puffPool.points); puffPool.points.geometry.dispose(); puffPool.points.material.dispose(); }
     if (shardPool) { scene.remove(shardPool.points); shardPool.points.geometry.dispose(); shardPool.points.material.dispose(); }
-    const cap = MAX_PARTICLES[q.particles] || 300;
+    const cap = q.budget.puffs;
     puffPool = makeParticlePool(cap, 0.07, 0xffffff, true);
     shardPool = makeParticlePool(Math.floor(cap / 2), 0.1, 0xff5030, false);
   }

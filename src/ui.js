@@ -430,7 +430,7 @@ export function createUI(actions) {
 
       if (info) {
         wrap.append(h('p', { id: 'gfx-summary', class: 'sub gfx-summary', 'data-gfx-preset': r.preset },
-          info.gpu + ' · ' + describe(r, info.pixels, T.describe)));
+          [info.gpu, info.level != null ? T.level.replace('{n}', info.level) : null, describe(r, info.pixels, T.describe)].filter(Boolean).join(' · ')));
         if (info.postFailed) wrap.append(h('p', { id: 'gfx-note', class: 'gfx-note', role: 'note' }, T.postUnavailable));
       }
       if (focusId) { const el = wrap.querySelector('#' + focusId); if (el) el.focus(); }
