@@ -1,11 +1,18 @@
 {
   "name": "spiral-drop",
   "version": "1.0.0",
+  "description": "Spiral Drop — rotate a layered tower so a falling ball threads the gaps. A rotation action puzzle on the StarHermit engine.",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node tests/run-tests.js && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/progress.test.mjs tests/i18n.test.mjs",
+    "test:native": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/native.mjs",
+    "test:browser": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/browser-play.mjs .",
     "start": "node server.js",
-    "test": "node tests/run-tests.js && node --test tests/gfx.test.mjs tests/platform.test.mjs tests/i18n.test.mjs",
-    "test:e2e": "node tests/e2e.mjs"
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "plays": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/gen-plays.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0"

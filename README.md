@@ -3,67 +3,44 @@
 Rotate a layered tower so a falling ball passes through safe gaps and avoids
 striped danger sectors. Chain drops to charge a smash. Reach the base.
 
+A StarHermit engine script game (engine 1.20.2, `engine.minor=20`): played
+natively by the StarHermit client and in browsers by the engine's web
+runtime (`index.html` is the loader `npm run package` writes). See `spec.md`
+for the full running specification.
+
 ## Run
 
 ```
-npx serve .             # or any static server
+starhermit .            # the StarHermit runtime (~/sh/runtime/1.20.2/…)
+npm start               # local static server (server.js) for the web loader
 ```
-
-Fully playable offline from a static host; the client makes no server API
-calls.
 
 ## Test
 
 ```
-node tests/run-tests.js
+npm test                # rules, progress, i18n, then the native checks and play scripts
+npm run test:browser    # the web package in GPU Chrome at desktop, phone, landscape
+npm run plays           # regenerate tests/native/*.play from the planning bot
+npm run package         # after every change: the loader and the file index
 ```
-
-33 tests: legality, invalid-action reasons, every scoring component, terminal
-states, undo, serialization round-trips, deterministic replay (same seed +
-commands → identical state hashes), envelope tamper detection, content
-validators for all 40 journey stages / challenges / lessons, daily-seed
-immutability, and fuzz runs (no hangs, NaNs, or unbounded loops).
 
 ## Controls
 
-- **←/→ or A/D** (hold), drag sideways, on-screen arrows, or gamepad stick/d-pad — rotate tower
-- **Esc / Space** — pause · **U** — undo (practice) · **H** — hint (practice/learn)
+- **←/→ or A/D** (hold), drag sideways, the round on-screen buttons, or the
+  gamepad stick / D-pad — rotate the tower
+- **Esc / Space** — pause · **U** — undo (practice, lessons) · **H** — hint
+  (practice, lessons); keys and pads rebind in the runtime's Options
 
-## Architecture
+## Layout
 
-- `src/rules.js` — pure deterministic engine (fixed 60 Hz tick, seeded RNG,
-  serializable state, legal-action API, replay envelopes + verification). UMD,
-  shared verbatim between browser, tests, and the server validator.
-- `src/content.js` — versioned content: 5 themes, 40 journey stages, daily
-  generator (one immutable seed per UTC day), 6 challenges, 5 lessons, offline
-  validators (legality, reachability, bounded duration, no soft locks).
-- `src/render.js` — Three.js scene: gradient sky dome, pooled ring views,
-  pooled particles, critically-damped camera spring, quality tiers
-  (shadows/particles/pixel-ratio/render-scale), ACES tone mapping, context-loss
-  recovery. Never mutates rules state.
-- `src/ui.js` — semantic HTML screens/HUD: title, mode setup, journey map,
-  results with score breakdown, settings (audio buses, quality, accessibility),
-  help cards, live regions, captions.
-- `src/audio.js` — WebAudio procedural synth; music/effects/ambience/voice
-  buses; seeded sound variants.
-- `src/platform.js` — StarHermit host adapter via the SDK: identity, cloud
-  save, settings, bindings, read-only boards. No own-server calls.
-- `server.js` — static host + API: score validation by deterministic replay,
-  tie-breaks (completion → invalid actions → time → session id), rate limits,
-  durable JSON boards.
-
-## Modes
-
-Learn (5 interactive lessons) · Journey (40 authored stages across 5 themes)
-· Daily (shared UTC seed) · Practice (3 difficulties,
-undo + hints, unrated) · Challenges (move budget, clock, narrow gaps, drift
-storm, long tower, smash gauntlet) · Score chase (local + platform global
-boards, friends filter).
-
-## Accessibility
-
-Full keyboard operation with visible focus, screen-reader live regions for
-objective/score/results, stripe-textured danger (never color-only), CVD-safe
-palette, high contrast, larger text, reduced motion, left-handed controls,
-captions for audio cues, hold-vs-toggle rotate buttons, safe-area-aware
-responsive layouts for portrait/landscape mobile and desktop.
+- `src/rules.js`, `src/content.js` — the deterministic rules and versioned
+  content (UMD; shared with `server.js` and the tests).
+- `src/progress.js` — the save model and progression rules; `src/lang.js`,
+  `src/strings.js`, `src/sh-strings.js` — localization (nine locales).
+- `native/` — the engine client: `main.ts` (session, input, lifecycle),
+  `screens.ts` (HUD and panels), `render.ts` (the tower), `audio.ts`,
+  `platform.ts` (saves, options, leaderboard), `quality.ts`, `style.ts`,
+  `i18n.ts`.
+- `score-script.js` — the platform script that posts a finished run's total
+  to the `high-score` board; `server.js` — local dev server and replay
+  validator.

@@ -243,3 +243,12 @@ real UI). `npm test` 33/33 and `npm run test:e2e` 15/15 both pass before and aft
 Suspected #2 (invalid actions from repeated `rotateStart`) **could not be reproduced**: `keydown`
 returns on `e.repeat`, `startRotate()` returns when `rotating === dir`, the drag handler only fires
 on a direction change, and the gamepad poll is edge-guarded — no path re-sends a held direction.
+
+## Engine port 2026-10-28
+
+The browser client (index.html, css/, lib/three r160, src/main.js, ui.js,
+render.js, audio.js, platform.js, gfx*.js, gpu-level.js, i18n.js and the page
+helpers) was replaced by a StarHermit engine script game (native/*.ts over
+the unchanged src/rules.js and src/content.js); the browser-only tests
+(e2e.mjs, gfx tests, the SDK platform tests) went with it. Kept rules
+behaviour and other limitations are listed in spec.md, "Known limitations".
