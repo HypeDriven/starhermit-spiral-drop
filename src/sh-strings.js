@@ -1,9 +1,9 @@
 /**
  * sh-strings.js — localized strings for the StarHermit account controls
- * (sign-in, invite link, sign-out notice, key-binding reset, leaderboard line). main.js passes
- * the game language (i18n.js currentLang()).
+ * (sign-in, invite link, sign-out notice, key-binding reset, leaderboard line). native/i18n.ts passes
+ * the game language (lang.js lang()).
  */
-import { pickLocale } from './gfx-i18n.js';
+import { pickLocale } from './lang.js';
 
 const EN = {
   signIn: 'Sign in with StarHermit',

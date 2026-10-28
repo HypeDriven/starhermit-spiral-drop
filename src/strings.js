@@ -8,7 +8,6 @@
  */
 export const ROWS = [
   // ---- HUD markup
-  ['Spiral Drop playfield', 'Campo de juego de Spiral Drop', 'Spielfeld von Spiral Drop', 'Aire de jeu de Spiral Drop', 'Área de jogo do Spiral Drop', 'Area di gioco di Spiral Drop'],
   ['Score', 'Puntuación', 'Punktzahl', 'Score', 'Pontuação', 'Punteggio'],
   ['Smash charge', 'Carga de impacto', 'Durchbruch-Ladung', 'Charge de fracas', 'Carga de impacto', 'Carica di sfondamento'],
   ['Pause (Esc)', 'Pausa (Esc)', 'Pause (Esc)', 'Pause (Échap)', 'Pausar (Esc)', 'Pausa (Esc)'],
@@ -37,7 +36,6 @@ export const ROWS = [
   ['cloud sync issue', 'problema de sincronización', 'Problem bei der Cloud-Synchronisierung', 'problème de synchronisation', 'problema de sincronização', 'problema di sincronizzazione'],
   ['offline', 'sin conexión', 'offline', 'hors ligne', 'offline', 'offline'],
   ['Player', 'Jugador', 'Spieler', 'Joueur', 'Jogador', 'Giocatore'],
-  ['Player {id}', 'Jugador {id}', 'Spieler {id}', 'Joueur {id}', 'Jogador {id}', 'Giocatore {id}'],
   // ---- setup
   ['Ranked', 'Clasificatoria', 'Gewertet', 'Classé', 'Ranqueada', 'In classifica'],
   ['Casual — not rated', 'Informal: sin clasificación', 'Locker – ohne Wertung', 'Détente — non classé', 'Casual — sem ranking', 'Libera: senza classifica'],
@@ -69,7 +67,6 @@ export const ROWS = [
   ['<1 min', '<1 min', '<1 Min.', '<1 min', '<1 min', '<1 min'],
   // ---- journey, practice, challenges, learn, scores
   ['{done} / {total} stages cleared. Mastery stages glow gold.', '{done} / {total} etapas superadas. Las etapas de maestría brillan en dorado.', '{done} / {total} Etappen geschafft. Meister-Etappen leuchten golden.', '{done} / {total} étapes réussies. Les étapes de maîtrise brillent en or.', '{done} / {total} fases concluídas. As fases de maestria brilham em dourado.', '{done} / {total} tappe superate. Le tappe di maestria brillano d’oro.'],
-  ['Journey stages', 'Etapas de la travesía', 'Reise-Etappen', 'Étapes du parcours', 'Fases da jornada', 'Tappe del percorso'],
   ['Stage {n} {name}', 'Etapa {n} {name}', 'Etappe {n} {name}', 'Étape {n} {name}', 'Fase {n} {name}', 'Tappa {n} {name}'],
   [', cleared, {n} stars', ', superada, {n} estrellas', ', geschafft, {n} Sterne', ', réussie, {n} étoiles', ', concluída, {n} estrelas', ', superata, {n} stelle'],
   [', locked', ', bloqueada', ', gesperrt', ', verrouillée', ', bloqueada', ', bloccata'],
@@ -87,8 +84,6 @@ export const ROWS = [
   ['Global', 'Global', 'Global', 'Mondial', 'Global', 'Globale'],
   ['Friends', 'Amigos', 'Freunde', 'Amis', 'Amigos', 'Amici'],
   ['Local bests on this device.', 'Mejores marcas locales en este dispositivo.', 'Lokale Bestwerte auf diesem Gerät.', 'Records locaux sur cet appareil.', 'Recordes locais neste dispositivo.', 'Record locali su questo dispositivo.'],
-  ['Global board.', 'Clasificación global.', 'Globale Bestenliste.', 'Classement mondial.', 'Ranking global.', 'Classifica globale.'],
-  ['Offline — global boards need the hosted version.', 'Sin conexión: las clasificaciones globales requieren la versión alojada.', 'Offline – globale Bestenlisten brauchen die gehostete Version.', 'Hors ligne — les classements mondiaux nécessitent la version en ligne.', 'Offline — rankings globais exigem a versão hospedada.', 'Offline: le classifiche globali richiedono la versione online.'],
   ['Friends-only board.', 'Clasificación solo de amigos.', 'Bestenliste nur mit Freunden.', 'Classement entre amis.', 'Ranking só de amigos.', 'Classifica solo amici.'],
   ['Global (platform leaderboard — read-only).', 'Global (clasificación de la plataforma, solo lectura).', 'Global (Plattform-Bestenliste – schreibgeschützt).', 'Mondial (classement de la plateforme — lecture seule).', 'Global (ranking da plataforma — somente leitura).', 'Globale (classifica della piattaforma, sola lettura).'],
   // ---- help
@@ -107,17 +102,9 @@ export const ROWS = [
   ['confirm', 'confirmar', 'bestätigen', 'valider', 'confirmar', 'conferma'],
   // ---- settings
   ['Audio', 'Audio', 'Audio', 'Audio', 'Áudio', 'Audio'],
-  ['Music', 'Música', 'Musik', 'Musique', 'Música', 'Musica'],
-  ['Effects', 'Efectos', 'Effekte', 'Effets', 'Efeitos', 'Effetti'],
-  ['Ambience', 'Ambiente', 'Atmosphäre', 'Ambiance', 'Ambiente', 'Ambiente'],
-  ['Voice', 'Voz', 'Stimme', 'Voix', 'Voz', 'Voce'],
-  ['Mute all', 'Silenciar todo', 'Alles stumm', 'Tout couper', 'Silenciar tudo', 'Silenzia tutto'],
   ['Captions for audio cues', 'Subtítulos para señales de audio', 'Untertitel für Tonsignale', 'Sous-titres des repères sonores', 'Legendas para sinais de áudio', 'Sottotitoli per i segnali audio'],
   ['Accessibility & controls', 'Accesibilidad y controles', 'Barrierefreiheit & Steuerung', 'Accessibilité et commandes', 'Acessibilidade e controles', 'Accessibilità e comandi'],
-  ['Reduced motion (no shake/swoops)', 'Movimiento reducido (sin sacudidas ni barridos)', 'Weniger Bewegung (kein Wackeln, keine Schwenks)', 'Mouvements réduits (sans secousses ni balayages)', 'Movimento reduzido (sem tremores nem varreduras)', 'Movimento ridotto (niente scosse o panoramiche)'],
-  ['High contrast', 'Alto contraste', 'Hoher Kontrast', 'Contraste élevé', 'Alto contraste', 'Contrasto elevato'],
   ['Color-vision-safe palette', 'Paleta apta para daltonismo', 'Farbsehschwäche-geeignete Palette', 'Palette adaptée au daltonisme', 'Paleta adequada a daltonismo', 'Tavolozza adatta al daltonismo'],
-  ['Larger text', 'Texto más grande', 'Größerer Text', 'Texte plus grand', 'Texto maior', 'Testo più grande'],
   ['Left-handed controls', 'Controles para zurdos', 'Linkshänder-Steuerung', 'Commandes pour gaucher', 'Controles para canhotos', 'Comandi per mancini'],
   ['Hold-to-rotate buttons (vs toggle)', 'Botones de mantener para girar (en vez de alternar)', 'Halten zum Drehen (statt Umschalten)', 'Maintenir pour tourner (au lieu de basculer)', 'Segurar para girar (em vez de alternar)', 'Tieni premuto per ruotare (invece di alternare)'],
   ['Data', 'Datos', 'Daten', 'Données', 'Dados', 'Dati'],
@@ -162,9 +149,6 @@ export const ROWS = [
   ['Run abandoned', 'Partida abandonada', 'Lauf abgebrochen', 'Partie abandonnée', 'Partida abandonada', 'Partita abbandonata'],
   ['Run timed out', 'La partida superó el tiempo máximo', 'Lauf hat das Zeitlimit überschritten', 'La partie a dépassé la durée maximale', 'A partida excedeu o tempo máximo', 'La partita ha superato il tempo massimo'],
   // ---- main.js
-  ['Graphics context lost — recovering.', 'Se perdió el contexto gráfico: recuperando.', 'Grafikkontext verloren – wird wiederhergestellt.', 'Contexte graphique perdu — récupération.', 'Contexto gráfico perdido — recuperando.', 'Contesto grafico perso: ripristino.'],
-  ['Graphics recovered.', 'Gráficos recuperados.', 'Grafik wiederhergestellt.', 'Graphismes rétablis.', 'Gráficos recuperados.', 'Grafica ripristinata.'],
-  ['Your browser could not create a WebGL context, so the 3D playfield is unavailable. Your settings and progress are safe. Try updating your browser or enabling hardware acceleration.', 'Tu navegador no pudo crear un contexto WebGL, así que el campo 3D no está disponible. Tus ajustes y tu progreso están a salvo. Prueba a actualizar el navegador o activar la aceleración por hardware.', 'Dein Browser konnte keinen WebGL-Kontext erstellen, daher ist das 3D-Spielfeld nicht verfügbar. Deine Einstellungen und dein Fortschritt sind sicher. Aktualisiere den Browser oder aktiviere die Hardwarebeschleunigung.', 'Votre navigateur n’a pas pu créer de contexte WebGL : l’aire de jeu 3D est indisponible. Vos paramètres et votre progression sont préservés. Mettez à jour votre navigateur ou activez l’accélération matérielle.', 'Seu navegador não conseguiu criar um contexto WebGL, então a área 3D está indisponível. Suas configurações e seu progresso estão seguros. Atualize o navegador ou ative a aceleração de hardware.', 'Il browser non è riuscito a creare un contesto WebGL, quindi l’area di gioco 3D non è disponibile. Impostazioni e progressi sono al sicuro. Aggiorna il browser o attiva l’accelerazione hardware.'],
   ['Daily Drop — {date}', 'Caída diaria: {date}', 'Tagesfall – {date}', 'Chute du jour — {date}', 'Queda diária — {date}', 'Caduta del giorno — {date}'],
   ['Drop!', '¡Cae!', 'Los!', 'Chute !', 'Caia!', 'Giù!'],
   ['Go. {objective}', 'Ya. {objective}', 'Los. {objective}', 'Partez. {objective}', 'Já. {objective}', 'Via. {objective}'],
@@ -272,6 +256,15 @@ export const ROWS = [
   ['Drop through several layers without landing for bonus points. Aligned gaps make a shaft — release and fall!', 'Atraviesa varias capas sin aterrizar para ganar puntos extra. Los huecos alineados forman un pozo: ¡suelta y cae!', 'Fall ohne Landung durch mehrere Ebenen für Bonuspunkte. Ausgerichtete Lücken bilden einen Schacht – loslassen und fallen!', 'Traversez plusieurs couches sans atterrir pour des points bonus. Les ouvertures alignées forment un puits — lâchez et tombez !', 'Atravesse várias camadas sem pousar para ganhar pontos extras. Aberturas alinhadas formam um poço — solte e caia!', 'Attraversa più livelli senza atterrare per punti bonus. I varchi allineati formano un pozzo: lascia andare e cadi!'],
   ['Smash Through', 'Atraviesa', 'Durchbrechen', 'Fracassez tout', 'Atravesse', 'Sfonda'],
   ['Pass 3 layers in one drop and the ball charges up — the next danger sector shatters instead of stopping you.', 'Supera 3 capas en una caída y la bola se carga: el siguiente sector peligroso se rompe en lugar de detenerte.', 'Schaffe 3 Ebenen in einem Fall und die Kugel lädt sich auf – die nächste Gefahrenzone zerbricht, statt dich zu stoppen.', 'Franchissez 3 couches en une chute et la balle se charge — le prochain secteur dangereux se brise au lieu de vous arrêter.', 'Passe 3 camadas numa queda e a bola carrega — o próximo setor perigoso se quebra em vez de parar você.', 'Supera 3 livelli in una caduta e la palla si carica: il prossimo settore pericoloso si infrange invece di fermarti.'],
+  // ---- engine client
+  ['Cancel', 'Cancelar', 'Abbrechen', 'Annuler', 'Cancelar', 'Annulla'],
+  ['Erase', 'Borrar', 'Löschen', 'Effacer', 'Apagar', 'Cancella'],
+  ['Key bindings', 'Asignación de teclas', 'Tastenbelegung', 'Raccourcis clavier', 'Atalhos de teclado', 'Assegnazione tasti'],
+  ['Open Options', 'Abrir opciones', 'Optionen öffnen', 'Ouvrir les options', 'Abrir opções', 'Apri opzioni'],
+  ['Progress erased.', 'Progreso borrado.', 'Fortschritt gelöscht.', 'Progression effacée.', 'Progresso apagado.', 'Progressi cancellati.'],
+  ['Progress restored from your StarHermit cloud save.', 'Progreso restaurado desde tu guardado en la nube de StarHermit.', 'Fortschritt aus deinem StarHermit-Cloud-Spielstand wiederhergestellt.', 'Progression restaurée depuis votre sauvegarde en ligne StarHermit.', 'Progresso restaurado do seu salvamento na nuvem do StarHermit.', 'Progressi ripristinati dal tuo salvataggio cloud StarHermit.'],
+  ['Run over', 'Partida terminada', 'Lauf vorbei', 'Partie terminée', 'Partida encerrada', 'Partita finita'],
+  ['Volumes, mute, graphics quality, language, larger text, high contrast and reduced motion are in the StarHermit Options.', 'El volumen, el silencio, la calidad gráfica, el idioma, el texto grande, el alto contraste y el movimiento reducido están en las Opciones de StarHermit.', 'Lautstärke, Stummschaltung, Grafikqualität, Sprache, größere Schrift, hoher Kontrast und reduzierte Bewegung findest du in den StarHermit-Optionen.', 'Volumes, coupure du son, qualité graphique, langue, texte agrandi, contraste élevé et mouvements réduits se trouvent dans les Options StarHermit.', 'Volumes, mudo, qualidade gráfica, idioma, texto maior, alto contraste e movimento reduzido ficam nas Opções do StarHermit.', 'Volumi, silenzioso, qualità grafica, lingua, testo più grande, contrasto elevato e movimento ridotto si trovano nelle Opzioni di StarHermit.'],
 ];
 
 export const OVERRIDES = {
@@ -281,8 +274,6 @@ export const OVERRIDES = {
   },
   'es-ES': {
     ', the round arrow buttons, drag sideways, or a gamepad stick. The ball never moves sideways — only the tower turns.': ', los botones de flecha redondos, arrastrar de lado o un joystick del mando. La bola nunca se mueve de lado: solo gira la torre.',
-    'Graphics context lost — recovering.': 'Se ha perdido el contexto gráfico: recuperando.',
-    'Your browser could not create a WebGL context, so the 3D playfield is unavailable. Your settings and progress are safe. Try updating your browser or enabling hardware acceleration.': 'Tu navegador no ha podido crear un contexto WebGL, así que el campo 3D no está disponible. Tus ajustes y tu progreso están a salvo. Prueba a actualizar el navegador o a activar la aceleración por hardware.',
     'Time expired': 'Se ha acabado el tiempo',
   },
   'fr-CA': {

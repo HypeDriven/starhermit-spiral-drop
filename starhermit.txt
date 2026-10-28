@@ -1,14 +1,41 @@
 name=Spiral Drop
 description=Rotate a layered tower to guide a falling ball through gaps while avoiding dangerous sectors.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 version=1.0.0
 rulesVersion=1
 contentVersion=1
 cover=cover.jpg
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.20.2
+engine.minor=20
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard actions (players rebind keys and pads in the runtime's Options).
+# The tower also turns while a finger or the mouse drags sideways over it,
+# or while the round on-screen arrow buttons are held (or toggled, with
+# Hold-to-rotate off in Settings).
+engine.group.left=Tower
 control.left=ArrowLeft+KeyA | Rotate left
 control.right=ArrowRight+KeyD | Rotate right
+engine.group.pause=Run
 control.pause=Escape+Space | Pause / resume
 control.undo=KeyU | Undo (practice)
 control.hint=KeyH | Hint
+
+# Gamepad defaults (the browser build's: the left stick or the D-pad turns,
+# Start or East pauses; South presses the focused button): West undoes,
+# North asks for a hint.
+engine.gamepad.left=DpadLeft+LeftStickLeft
+engine.gamepad.right=DpadRight+LeftStickRight
+engine.gamepad.pause=Start+East
+engine.gamepad.undo=West
+engine.gamepad.hint=North
