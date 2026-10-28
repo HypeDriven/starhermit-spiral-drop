@@ -155,7 +155,6 @@ for (const v of views) {
       }
       if (!done) throw new Error('drags did not turn the tower');
       {
-        await page.waitForTimeout(1500); // a tap right after a drag's end is not a press (as a player lifts and taps again)
         const b = await page.getByRole('button', { name: 'Pause (Esc)', exact: true }).first().boundingBox();
         await tapAt(b.x + b.width / 2, b.y + b.height / 2);
       }

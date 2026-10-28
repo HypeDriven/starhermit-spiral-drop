@@ -130,13 +130,23 @@ function hud(L: Layout): void {
   if (!L.land) {
     // #hud-top: objective, then the chips and pause at the end
     ui.place("hud-top", { anchor: "top-start", x: pad, y: 10 }, () => {
+      // Pause keeps its place at the row's end; the chips drop to a second row when they would crowd it
+      // (the streak chip appearing on a phone pushed Pause off-screen).
+      const avail = L.lw - 2 * pad, pauseW = 44 + 10;
       const midW = (lastSize.get("hud-mid")?.width ?? 200 * L.sc) / L.sc;
-      const objW = Math.max(80, Math.min(L.lw - 2 * pad - midW - 10, 70 * 8.2, textWidth(objectiveText(), "objective-text") + 28));
-      ui.row("hud-top-row", () => {
-        ui.column("hud-objective", () => para(objectiveText(), objW - 26, "objective-text", "hud-objective-t"), { style: "chip", width: objW });
-        ui.spacer();
-        lastSize.set("hud-mid", ui.row("hud-mid", () => { midChips(); pauseBtn(); }, { spacing: 10, align: "start" }));
-      }, { width: L.lw - 2 * pad, spacing: 10, align: "start" });
+      const fits = 80 + 10 + midW + 10 + pauseW <= avail;
+      const room = fits ? avail - midW - 10 - pauseW - 10 : avail - pauseW - 10;
+      const objW = Math.max(80, Math.min(room, 70 * 8.2, textWidth(objectiveText(), "objective-text") + 28));
+      const chips = (): void => { lastSize.set("hud-mid", ui.row("hud-mid", () => midChips(), { spacing: 10, align: "start" })); };
+      ui.column("hud-top-col", () => {
+        ui.row("hud-top-row", () => {
+          ui.column("hud-objective", () => para(objectiveText(), objW - 26, "objective-text", "hud-objective-t"), { style: "chip", width: objW });
+          ui.spacer();
+          if (fits) chips();
+          pauseBtn();
+        }, { width: avail, spacing: 10, align: "start" });
+        if (!fits) ui.row("hud-chips-row", () => { ui.spacer(); chips(); }, { width: avail });
+      }, { spacing: 8 });
     });
   } else {
     // short landscape: the status in a column at the start
