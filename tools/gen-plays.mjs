@@ -1,7 +1,7 @@
 // Writes the native play scripts (tests/native/*.play) from runs the rules
 // play here: the planning bot (tools/bot.mjs) rotates on the client's fixed
 // steps (one rules tick a 60 Hz step), and its rotation changes become hold /
-// release lines at exact frames. Timing on the 1.23.0 render check
+// release lines at exact frames. Timing on the 1.24.0 render check
 // (measured): the `until =3` line matches on the frame the countdown shows
 // its first beat; the first active step is FIRST_STEP frames later; each key
 // line takes one frame and acts on that frame's step; `frames N` takes N + 1

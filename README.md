@@ -3,7 +3,7 @@
 Rotate a layered tower so a falling ball passes through safe gaps and avoids
 striped danger sectors. Chain drops to charge a smash. Reach the base.
 
-A StarHermit engine script game (engine 1.23.0, `engine.minor=20`): played
+A StarHermit engine script game (engine 1.24.0, `engine.minor=20`): played
 natively by the StarHermit client and in browsers by the engine's web
 runtime (`index.html` is the loader `npm run package` writes). See `spec.md`
 for the full running specification.
@@ -11,7 +11,7 @@ for the full running specification.
 ## Run
 
 ```
-starhermit .            # the StarHermit runtime (~/sh/runtime/1.23.0/…)
+starhermit .            # the StarHermit runtime (~/sh/runtime/1.24.0/…)
 npm start               # local static server (server.js) for the web loader
 ```
 
