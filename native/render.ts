@@ -16,21 +16,18 @@
 // it is given (with the fixed step's interpolation) and never changes it.
 //
 // From three.js r160 (physically based lights): colours as written, the
-// punctual and hemisphere lights' intensities ÷ π (the engine takes three's
-// legacy units). render.js built `new RoomEnvironment(renderer)` (kept
+// light intensities, shadow box and normalBias as the page (minor 29). render.js built `new RoomEnvironment(renderer)` (kept
 // exactly, engine spec "Porting environments"); r160 scaled scene.environment
 // by each material's envMapIntensity, so every lit material carries it as its
 // own envMap at its old intensity. The sky's GLSL ShaderMaterial is WGSL
 // (toneMapped false: it skips tone mapping without post effects and is
 // pre-darkened by half under them, as render.js did). The danger stripes'
-// canvas was read as linear values by r160 (no colorSpace): the engine reads
-// colour maps as sRGB, so the stripe canvas is painted with those values
-// sRGB-encoded. The old composer (RenderPass in half floats → GTAO →
+// canvas has no colorSpace, read as linear values as r160 did. The old composer (RenderPass in half floats → GTAO →
 // UnrealBloom 0.42 / 0.35 / 0.9 → the grade + vignette → OutputPass with ACES
 // at exposure 1.05, 0.95 for Paper Dawn → SMAA / FXAA) is the runtime's
 // renderer.ao / bloom / grade / antialias.
 import {
-  ACESFilmicToneMapping, AdditiveBlending, BackSide, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry,
+  ACESFilmicToneMapping, OrthographicCamera, AdditiveBlending, BackSide, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry,
   DirectionalLight, DoubleSide, ExtrudeGeometry, Fog, Group, HemisphereLight, Line, LineBasicMaterial, Mesh, MeshBasicMaterial,
   MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PMREMGenerator, PerspectiveCamera, PointLight,
   Points, PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3,
@@ -97,27 +94,13 @@ function dotTexture(): CanvasTexture {
   tex.colorSpace = SRGBColorSpace;
   return tex;
 }
-/** A byte as r160 read it (linear) written for an sRGB-read map. */
-function enc(byte: number): number {
-  const l = Math.max(0, Math.min(1, byte / 255));
-  const s = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055;
-  return Math.round(s * 255);
-}
-function rgbOf(hex: string): [number, number, number] {
-  const c = new Color(hex);
-  const h = c.getHex();
-  return [(h >> 16) & 255, (h >> 8) & 255, h & 255];
-}
 function stripeTexture(base: string, stripeDark: boolean): CanvasTexture {
   const { c, g } = canvas(64, 64);
-  const [r, gr, b] = rgbOf(base);
-  // render.js stroked rgba(0,0,0,0.35) (or opaque black in high contrast) over the base
-  const k = stripeDark ? 0 : 0.65;
-  g.fillStyle = `rgb(${enc(r)},${enc(gr)},${enc(b)})`; g.fillRect(0, 0, 64, 64);
-  g.strokeStyle = `rgb(${enc(r * k)},${enc(gr * k)},${enc(b * k)})`; g.lineWidth = 7;
+  // render.js makeStripeTexture: no colorSpace, so the bytes are linear values as r160 read them
+  g.fillStyle = base; g.fillRect(0, 0, 64, 64);
+  g.strokeStyle = stripeDark ? "#000" : "rgba(0,0,0,0.35)"; g.lineWidth = 7;
   for (let i = -64; i < 128; i += 16) { g.beginPath(); g.moveTo(i, 70); g.lineTo(i + 70, -6); g.stroke(); }
   const tex = new CanvasTexture(c);
-  tex.colorSpace = SRGBColorSpace;
   tex.wrapS = tex.wrapT = RepeatWrapping;
   tex.repeat.set(6, 1);
   return tex;
@@ -142,13 +125,14 @@ function ringSectorGeometry(rIn: number, rOut: number, thick: number, start: num
 // ---------------------------------------------------------------- the scene
 const camera = new PerspectiveCamera(CAM.fov, 1, 0.1, 120);
 const KEY_OFFSET = new Vector3(3.2, 7, 4.2);
-const key = new DirectionalLight(0xfff1dc, 2.4 / PI);
+const key = new DirectionalLight(0xfff1dc, 2.4);
 key.position.copy(KEY_OFFSET);
 key.shadow.bias = -0.0006;
-key.shadow.normalBias = 1; // three's 0.02 world units; the engine's normal bias is in texels
+key.shadow.normalBias = 0.02;
+{ const sc = key.shadow.camera as OrthographicCamera; sc.near = 1; sc.far = 30; sc.left = -3.4; sc.right = 3.4; sc.top = 5.5; sc.bottom = -5.5; sc.updateProjectionMatrix(); }
 scene.add(key.target);
-const fill = new HemisphereLight(0xbfd4ff, 0x30231f, 0.85 / PI);
-const ballLight = new PointLight(0xffffff, 0.9 / PI, 6);
+const fill = new HemisphereLight(0xbfd4ff, 0x30231f, 0.85);
+const ballLight = new PointLight(0xffffff, 0.9, 6);
 scene.add(key, fill, ballLight);
 
 let envTex: Texture | null = null;
@@ -432,7 +416,7 @@ function applyMaterialDetail(): void {
   setProps(baseMat, { clearcoat: det ? 0.5 : 0, clearcoatRoughness: 0.25 });
   envFor(0.22, safeMat); envFor(0.18, dangerMat); envFor(0.6, ballMat); envFor(0.25, pillarMat); envFor(0.25, baseMat);
   // reflections replace part of the hemisphere fill so overall exposure holds
-  fill.intensity = (look.reflections ? 0.62 : 0.85) / PI;
+  fill.intensity = look.reflections ? 0.62 : 0.85;
 }
 
 /** render.js applyTheme: the theme's colours (with the colour-vision patch and high contrast). */
@@ -537,8 +521,8 @@ export function applyLook(next: Look): void {
   look = next;
   const b = next.budget;
   renderer.toneMapping = ACESFilmicToneMapping;
-  // UnrealBloomPass(0.42, 0.35, 0.9): only the charged ball, the rest-ring rim and sparks bloom
-  renderer.bloom = next.bloom ? { strength: 0.42, radius: 0.35, threshold: 0.9, resolution: b.bloomRes } : null;
+  // UnrealBloomPass(0.42, 0.35, 0.9) on r160, strength squared for r185's bloom: only the charged ball, the rest-ring rim and sparks bloom
+  renderer.bloom = next.bloom ? { strength: 0.42 * 0.42, radius: 0.35, threshold: 0.9, resolution: b.bloomRes } : null;
   // GTAO radius 0.45, distance exponent 1.5, thickness 1, 16 / 8 samples and the denoise per tier; blend 0.7
   renderer.ao = next.ao === "off" ? null : {
     blendIntensity: 0.7, radius: 0.45, distanceExponent: 1.5, thickness: 1.0, scale: 1, samples: next.ao === "high" ? 16 : 8, resolution: b.aoRes,
@@ -548,6 +532,8 @@ export function applyLook(next: Look): void {
   // luma from 0.05 to 0.6, a 0.28 vignette from 0.3 to 0.85 (its y squeezed by 0.85)
   renderer.grade = next.grade ? {
     space: "linear", saturation: 1.12, split: [0.05, 0.6], shadows: [0.95, 0.98, 1.06], highlights: [1.05, 1.0, 0.95],
+    // pow(s, 1.06) × 1.04 as a line through its darks and mids; unclamped like the page's pass
+    levels: [1.013, -0.007], overRange: "keep",
     vignette: { amount: 0.28, inner: 0.3, outer: 0.85, scale: [1, 0.85] },
   } : null;
   renderer.antialias = next.antialias;
@@ -631,7 +617,6 @@ export function update(view: View, dt: number, w: number, h: number): void {
   const focusY = camY - CAM.height - 1.2;
   key.target.position.set(0, focusY, 0);
   key.position.set(KEY_OFFSET.x, focusY + KEY_OFFSET.y, KEY_OFFSET.z);
-  key.shadow.distance = camDist + 12;
 
   if (!reducedMotion) animTime += dt;
   skyUniforms.uTime.value = animTime;
@@ -656,7 +641,7 @@ export function update(view: View, dt: number, w: number, h: number): void {
   ballMat.emissive.set(((cvd && cvdPatch.accent) || theme.accent) as string);
   ballMat.emissiveIntensity = charge * (view.smashReady && !reducedMotion ? 0.9 + Math.sin(ms * 0.012) * 0.35 : 0.45);
   ballLight.position.copy(ball.position);
-  ballLight.intensity = (0.6 + charge * 1.2) / PI;
+  ballLight.intensity = 0.6 + charge * 1.2;
 
   marker.position.set(0, -view.restRing + 0.011, TOWER.ballOrbit);
   marker.visible = view.phase !== "terminal";
