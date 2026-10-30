@@ -521,8 +521,8 @@ export function applyLook(next: Look): void {
   look = next;
   const b = next.budget;
   renderer.toneMapping = ACESFilmicToneMapping;
-  // UnrealBloomPass(0.42, 0.35, 0.9) on r160, strength squared for r185's bloom: only the charged ball, the rest-ring rim and sparks bloom
-  renderer.bloom = next.bloom ? { strength: 0.42 * 0.42, radius: 0.35, threshold: 0.9, resolution: b.bloomRes } : null;
+  // UnrealBloomPass(0.42, 0.35, 0.9) on r160 (bloom.model "r160", the page's strength): only the charged ball, the rest-ring rim and sparks bloom
+  renderer.bloom = next.bloom ? { model: "r160", strength: 0.42, radius: 0.35, threshold: 0.9, resolution: b.bloomRes } : null;
   // GTAO radius 0.45, distance exponent 1.5, thickness 1, 16 / 8 samples and the denoise per tier; blend 0.7
   renderer.ao = next.ao === "off" ? null : {
     blendIntensity: 0.7, radius: 0.45, distanceExponent: 1.5, thickness: 1.0, scale: 1, samples: next.ao === "high" ? 16 : 8, resolution: b.aoRes,
