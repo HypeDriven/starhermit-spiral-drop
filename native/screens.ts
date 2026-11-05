@@ -29,10 +29,9 @@ export const hudRects: ui.Rect[] = [];
 
 interface Layout { lw: number; lh: number; sc: number; phone: boolean; land: boolean; wide: boolean }
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const sc = v.scale;
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const land = lw > lh && lh <= 480;
   return { lw, lh, sc, phone: lw <= 640 && !land, land, wide: lw >= 1024 };
 }
@@ -67,19 +66,10 @@ function button(b: Btn): void {
   }
 }
 /** Buttons at their own widths in rows that wrap at `width` (.btn-row flex-wrap). */
+
 function flow(label: string, list: Btn[], width: number, gap = 10): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
   const bw = (b: Btn): number => Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? "ghost"));
-  for (const b of list) {
-    const w = bw(b);
-    if (rows[rows.length - 1]!.length && used + gap + w > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + w;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => { for (const b of row) button({ ...b, width: bw(b) }); }, { spacing: gap, align: "center" }));
-  }, { spacing: gap, width });
+  ui.row(label, () => { for (const b of list) button({ ...b, width: bw(b) }); }, { wrap: true, width, gap, align: "center" });
 }
 
 // ------------------------------------------------------------------ the frame

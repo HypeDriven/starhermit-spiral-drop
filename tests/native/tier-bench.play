@@ -1,0 +1,16 @@
+# Graphics-level bench: Journey stage 1 (a fixed board); the ball bounces, one rotate, 600 frames measured.
+until 600 Spiral Drop
+frames 30
+click ▶ Play — start the Journey
+until 120 =Start
+frames 10
+click =Start
+until 300 =3
+frames 157
+frames 120
+measure start
+hold ArrowRight
+frames 40
+release ArrowRight
+frames 560
+measure stop

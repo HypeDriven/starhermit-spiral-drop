@@ -35,8 +35,8 @@ npm run package         # after every change: the loader and the file index
 
 - `src/rules.js`, `src/content.js` — the deterministic rules and versioned
   content (UMD; shared with `server.js` and the tests).
-- `src/progress.js` — the save model and progression rules; `src/lang.js`,
-  `src/strings.js`, `src/sh-strings.js` — localization (nine locales).
+- `src/progress.js` — the save model and progression rules; `assets/strings.json` —
+  localization (nine locales).
 - `native/` — the engine client: `main.ts` (session, input, lifecycle),
   `screens.ts` (HUD and panels), `render.ts` (the tower), `audio.ts`,
   `platform.ts` (saves, options, leaderboard), `quality.ts`, `style.ts`,

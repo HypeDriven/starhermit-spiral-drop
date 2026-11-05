@@ -90,7 +90,7 @@ The runtime's Options own volumes and mute, graphics quality (Auto and the level
 
 - The scene follows render.js (three.js r160): perspective camera (fov 42, distance 7.4, pulled back on narrow windows so the ring fits) on a critically damped spring following the ball, the key directional light (÷ π, r155+ physical units) following the camera with shadows, the hemisphere fill (0.85, 0.62 with reflections, ÷ π) and the ball's point light, `new RoomEnvironment(renderer)` prefiltered with PMREM as each lit material's own envMap at its old envMapIntensity (safe 0.22, danger 0.18, ball 0.6, pillar and base 0.25), the WGSL sky dome (gradient, drifting bands and twinkling stars when animated; tone mapping skipped without post effects and the sky pre-darkened by half under them), fog, ACES tone mapping at exposure 1.05 (0.95 for Paper Dawn).
 - Rings are `ExtrudeGeometry` annulus sectors: safe arcs, striped danger arcs (the stripe canvas sRGB-encoded so it reads as r160 read its linear canvas), bevelled on detailed tiers; the rest ring has a glowing rim, the ball a grounded marker; landing dust and smash shards are pooled `Points`; the ball leaves a short trail while falling.
-- Per quality tier (`native/quality.ts`, the old gfx.js presets): Low — Lambert, no shadows, no post (MSAA), static sky, plain rings, few particles; Balanced — Standard materials, 1024² shadows, bloom (0.42 / 0.35 / threshold 0.9, half res), linear grade (saturation 1.12, split toning 0.05–0.6, vignette 0.28), FXAA, reflections, bevels, grain and fluting; High — Physical clearcoat, 2048² shadows, GTAO (radius 0.45, 8 samples), SMAA, motes; Ultra — 4096² shadows, full-res GTAO (16) and bloom, MSAA, finer tessellation and textures. Particle pools scale ≤ 2× with the level inside a tier.
+- Engine-owned effects follow the level (`levelSettings()`): shadow map size, GTAO (radius 0.45), bloom (0.42 / 0.35 / threshold 0.9) resolution, the linear grade (saturation 1.12, split toning 0.05–0.6, vignette 0.28) and anti-aliasing (Low has none). The art follows the tier (`native/quality.ts`, the old gfx.js presets): Low — Lambert, static sky, plain rings, few particles; Balanced — Standard materials, reflections, bevels, grain and fluting; High — Physical clearcoat, motes; Ultra — finer tessellation and textures. Particle pools scale ≤ 2× with the level's particle budget inside a tier; dust and shards are native particle emitters, the motes stay in script (they wrap around the moving camera band).
 
 ### Sound
 
@@ -104,7 +104,7 @@ The authored clips (`sfx/*.opus`) play per rules event (rotate, drop, pass, land
 
 ### Localization
 
-Every player-facing string is drawn through `T()` from `src/strings.js` in the runtime's interface language (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT; regional tables list only their differences); the account strings are `src/sh-strings.js`. A language change shows on the next frame without ending the run.
+Every player-facing string is drawn through `T()` from `assets/strings.json` (the engine's `strings`) in the runtime's interface language (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT; regional tables list only their differences); the account strings are the engine's `starhermit.*`. A language change shows on the next frame without ending the run.
 
 ### Checks
 

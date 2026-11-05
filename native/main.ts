@@ -23,7 +23,7 @@
 // steps. The tower is drawn between the last two steps (the interpolation),
 // as the browser build drew it with its accumulator's alpha.
 import "./i18n.ts";
-import { clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { afterRender, clipboard, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { isDown, isKeyDown, onAction, onPointerButton, onPointerMove, onTouch } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
@@ -110,9 +110,8 @@ export function sound(ev: audio.Sfx, data?: SimEvent): void {
   }
   if (text) caption(text);
 }
-const pending: (() => void)[] = [];
 /** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets). */
-export function later(fn: () => void): void { pending.push(fn); }
+export function later(fn: () => void): void { afterRender(fn); }
 export function themeFor(c: Content): ReturnType<typeof Data.themeById> { return Data.themeById(c.theme || "ember"); }
 /** main.js contentName: the player-facing name of any run content. */
 export function contentName(c: Content | null): string {
@@ -430,8 +429,8 @@ function finishRun(): void {
 export function resultsLbLine(): string | null {
   const lb = app.results?.lb;
   if (!lb) return null;
-  if (lb === "posting") return S("lbPosting");
-  return !lb.posted ? S("lbNotPosted") : lb.rank ? S("lbRank", { rank: lb.rank }) : S("lbPosted");
+  if (lb === "posting") return S("leaderboardPosting");
+  return !lb.posted ? S("leaderboardNotPosted") : lb.rank ? S("leaderboardRank", { rank: lb.rank }) : S("leaderboardPosted");
 }
 
 export function watchReplay(): void {
@@ -451,7 +450,7 @@ export function signIn(): void { void requestSignIn().catch(() => undefined); }
 export function invite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); toast(S("copied")); } catch { toast(S("copyFailed") + ": " + link, 5000); }
+  try { clipboard.writeText(link); toast(S("inviteCopied")); } catch { toast(S("inviteFailed") + ": " + link, 5000); }
 }
 export function eraseData(): void {
   platform.erase();
@@ -614,11 +613,10 @@ onFixedUpdate(() => {
 // ------------------------------------------------------------------ boot and lifecycle
 let lookKey = "";
 function applyLook(): void {
-  const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  const level = frame().level;
+  if (level === lookKey) return;
+  lookKey = level;
+  render.applyLook(lookFor(levelSettings(level)));
 }
 onStart(() => {
   setFixedRate(60);
@@ -663,30 +661,32 @@ onRender((interp) => {
   const wasPlaying = app.phase === "active" && app.screen === null;
   hudRects.length = 0;
   drawScreens();
-  for (const fn of pending.splice(0)) fn();
-  decidePresses(wasPlaying);
-  if (spoken.length) {
-    const text = spoken.splice(0).join(" ").slice(0, 500);
-    try { ui.announce(text, { politeness: spokenAssertive ? "assertive" : "polite" }); } catch { /* the runtime keeps the newest */ }
-    spokenAssertive = false;
-  }
-  const f = frame();
-  const s = app.state;
-  let view: render.View;
-  if (s) {
-    const moving = app.phase === "active" || app.phase === "replay";
-    const a = moving ? interp : 1;
-    view = {
-      towerAngle: lerpAngle(prevAngle, s.towerAngle, a), ballY: prevBallY + (s.ball.y - prevBallY) * a, phase: s.phase, streak: s.streak,
-      smashReady: s.streak >= smashStreak(s), restRing: Math.min(s.ball.layer + 1, s.config.layers.length - 1), tick: s.tick,
-    };
-  } else {
-    const a = interp;
-    view = {
-      towerAngle: lerpAngle(attractPrev.angle, attract.towerAngle, a), ballY: attractPrev.y + (attract.ball.y - attractPrev.y) * a,
-      phase: attract.phase, streak: attract.streak, smashReady: false,
-      restRing: Math.min(attract.ball.layer + 1, attract.config.layers.length - 1), tick: attract.tick,
-    };
-  }
-  render.update(view, frameDt || DT, f.width, f.height);
+  // queued after this frame's presses (later), so they act on this frame's scene
+  afterRender(() => {
+    decidePresses(wasPlaying);
+    if (spoken.length) {
+      const text = spoken.splice(0).join(" ").slice(0, 500);
+      try { ui.announce(text, { politeness: spokenAssertive ? "assertive" : "polite" }); } catch { /* the runtime keeps the newest */ }
+      spokenAssertive = false;
+    }
+    const f = frame();
+    const s = app.state;
+    let view: render.View;
+    if (s) {
+      const moving = app.phase === "active" || app.phase === "replay";
+      const a = moving ? interp : 1;
+      view = {
+        towerAngle: lerpAngle(prevAngle, s.towerAngle, a), ballY: prevBallY + (s.ball.y - prevBallY) * a, phase: s.phase, streak: s.streak,
+        smashReady: s.streak >= smashStreak(s), restRing: Math.min(s.ball.layer + 1, s.config.layers.length - 1), tick: s.tick,
+      };
+    } else {
+      const a = interp;
+      view = {
+        towerAngle: lerpAngle(attractPrev.angle, attract.towerAngle, a), ballY: attractPrev.y + (attract.ball.y - attractPrev.y) * a,
+        phase: attract.phase, streak: attract.streak, smashReady: false,
+        restRing: Math.min(attract.ball.layer + 1, attract.config.layers.length - 1), tick: attract.tick,
+      };
+    }
+    render.update(view, frameDt || DT, f.width, f.height);
+  });
 });

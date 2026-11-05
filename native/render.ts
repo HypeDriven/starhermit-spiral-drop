@@ -29,7 +29,7 @@
 import {
   ACESFilmicToneMapping, OrthographicCamera, AdditiveBlending, BackSide, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry,
   DirectionalLight, DoubleSide, ExtrudeGeometry, Fog, Group, HemisphereLight, Line, LineBasicMaterial, Mesh, MeshBasicMaterial,
-  MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PMREMGenerator, PerspectiveCamera, PointLight,
+  MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PMREMGenerator, ParticleEmitter, PerspectiveCamera, PointLight,
   Points, PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3,
   renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
@@ -277,63 +277,29 @@ function buildRingView(v: RingView, layer: Layer, isRestRing: boolean): void {
   }
 }
 
-// pooled particles (two event tiers)
-interface Pool { points: Points; pos: Float32Array; vel: Float32Array; life: Float32Array; cap: number; head: number }
-function makePool(cap: number, size: number, color: number, additive: boolean): Pool {
-  const geo = new BufferGeometry();
-  const pos = new Float32Array(cap * 3);
-  for (let i = 0; i < cap; i++) pos[i * 3 + 1] = 1e6; // parked far offscreen
-  geo.setAttribute("position", new BufferAttribute(pos, 3));
+// event particles (two tiers): native emitters, one colour each
+function makePool(cap: number, size: number, color: number, additive: boolean, seed: number): ParticleEmitter {
   const soft = !!look?.detailed;
-  const mat = new PointsMaterial({
+  const material = new PointsMaterial({
     size: soft ? size * 1.8 : size, color, transparent: true, opacity: 0.9, depthWrite: false,
     map: soft ? dotTex : null, blending: soft && additive ? AdditiveBlending : NormalBlending,
   });
-  const points = new Points(geo, mat);
-  points.frustumCulled = false;
-  scene.add(points);
-  return { points, pos, vel: new Float32Array(cap * 3), life: new Float32Array(cap), cap, head: 0 };
+  const e = new ParticleEmitter({ capacity: Math.max(1, cap), material, seed, life: [0.5, 0.9], gravity: [0, -2.2, 0] });
+  e.frustumCulled = false;
+  scene.add(e);
+  return e;
 }
-let puffPool: Pool | null = null, shardPool: Pool | null = null;
-function dropPool(p: Pool | null): void { if (!p) return; scene.remove(p.points); p.points.geometry.dispose(); p.points.material.dispose(); }
-function spawn(pool: Pool | null, x: number, y: number, z: number, count: number, spread: number, up: number): void {
+let puffPool: ParticleEmitter | null = null, shardPool: ParticleEmitter | null = null;
+function dropPool(p: ParticleEmitter | null): void { if (!p) return; scene.remove(p); p.dispose(); }
+function spawn(pool: ParticleEmitter | null, x: number, y: number, z: number, count: number, spread: number, up: number): void {
   if (!pool) return;
-  const n = Math.min(count, pool.cap);
-  for (let i = 0; i < n; i++) {
-    const k = pool.head = (pool.head + 1) % pool.cap;
-    pool.pos[k * 3] = x; pool.pos[k * 3 + 1] = y; pool.pos[k * 3 + 2] = z;
-    const a = Math.random() * PI * 2;
-    const r = Math.random() * spread;
-    pool.vel[k * 3] = Math.cos(a) * r;
-    pool.vel[k * 3 + 1] = up * (0.5 + Math.random());
-    pool.vel[k * 3 + 2] = Math.sin(a) * r;
-    pool.life[k] = 0.5 + Math.random() * 0.4;
-  }
-}
-function stepParticles(pool: Pool | null, dt: number): void {
-  if (!pool) return;
-  let any = false;
-  for (let k = 0; k < pool.cap; k++) {
-    if (pool.life[k]! > 0) {
-      any = true;
-      pool.life[k] = pool.life[k]! - dt;
-      pool.pos[k * 3] = pool.pos[k * 3]! + pool.vel[k * 3]! * dt;
-      pool.pos[k * 3 + 1] = pool.pos[k * 3 + 1]! + pool.vel[k * 3 + 1]! * dt;
-      pool.pos[k * 3 + 2] = pool.pos[k * 3 + 2]! + pool.vel[k * 3 + 2]! * dt;
-      pool.vel[k * 3 + 1] = pool.vel[k * 3 + 1]! - 2.2 * dt;
-      if (pool.life[k]! <= 0) pool.pos[k * 3 + 1] = 1e6;
-    }
-  }
-  if (any) (pool.points.geometry.attributes.position as BufferAttribute).needsUpdate = true;
+  pool.set({ velocity: [0, up, 0], velocitySpread: [spread * 0.7, up * 0.5, spread * 0.7] });
+  pool.burst(count, [x, y, z]);
 }
 /** Clears the dust and shards (a new run starts clean). */
 export function clearParticles(): void {
-  for (const p of [puffPool, shardPool]) {
-    if (!p) continue;
-    p.life.fill(0);
-    for (let i = 0; i < p.cap; i++) p.pos[i * 3 + 1] = 1e6;
-    (p.points.geometry.attributes.position as BufferAttribute).needsUpdate = true;
-  }
+  puffPool?.clear();
+  shardPool?.clear();
   trailCount = 0;
 }
 
@@ -523,11 +489,12 @@ export function applyLook(next: Look): void {
   const b = next.budget;
   renderer.toneMapping = ACESFilmicToneMapping;
   // UnrealBloomPass(0.42, 0.35, 0.9) on r160 (bloom.model "r160", the page's strength): only the charged ball, the rest-ring rim and sparks bloom
-  renderer.bloom = next.bloom ? { model: "r160", strength: 0.42, radius: 0.35, threshold: 0.9, resolution: b.bloomRes } : null;
+  renderer.bloom = next.bloom !== null ? { model: "r160", strength: 0.42, radius: 0.35, threshold: 0.9, resolution: next.bloom } : null;
   // GTAO radius 0.45, distance exponent 1.5, thickness 1, 16 / 8 samples and the denoise per tier; blend 0.7
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.7, radius: 0.45, distanceExponent: 1.5, thickness: 1.0, scale: 1, samples: next.ao === "high" ? 16 : 8, resolution: b.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: next.ao === "high" ? 6 : 4, rings: 2, samples: next.ao === "high" ? 16 : 8, radiusExponent: 2 },
+  const ao = next.ao, full = !!ao && ao.resolution >= 1; // the engine's AoQuality: below 1 "on", from 1 "high"
+  renderer.ao = ao && {
+    blendIntensity: 0.7, radius: 0.45, distanceExponent: 1.5, thickness: 1.0, scale: 1, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: full ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // GradeShader on the linear buffer: saturation 1.12, cool shadows / warm highlights by a smoothstep of
   // luma from 0.05 to 0.6, a 0.28 vignette from 0.3 to 0.85 (its y squeezed by 0.85)
@@ -540,7 +507,7 @@ export function applyLook(next: Look): void {
   renderer.antialias = next.antialias;
   renderer.shadowMap.enabled = next.shadows > 0;
   key.castShadow = next.shadows > 0;
-  if (next.shadows > 0) key.shadow.mapSize = next.shadows;
+  if (next.shadows > 0) key.shadow.mapSize = next.shadows; // the level's size: the engine keeps whatever the game sets
   // textures and tessellation (rebuildTextures / rebuildRoundGeometry / rebuildLitMaterials)
   if (b.texture !== texSize) {
     texSize = b.texture;
@@ -571,8 +538,8 @@ export function applyLook(next: Look): void {
   }
   if (!prev || prev.particles !== next.particles || prev.detailed !== next.detailed || prev.budget.puffs !== b.puffs || prev.budget.motes !== b.motes) {
     dropPool(puffPool); dropPool(shardPool);
-    puffPool = makePool(b.puffs, 0.07, 0xffffff, true);
-    shardPool = makePool(Math.floor(b.puffs / 2), 0.1, 0xff5030, false);
+    puffPool = makePool(b.puffs, 0.07, 0xffffff, true, 1);
+    shardPool = makePool(Math.floor(b.puffs / 2), 0.1, 0xff5030, false, 2);
     makeMotes();
   }
 }
@@ -670,6 +637,4 @@ export function update(view: View, dt: number, w: number, h: number): void {
   trailGeo.setDrawRange(0, trailCount);
   trail.visible = trailCount > 1;
 
-  stepParticles(puffPool, dt);
-  stepParticles(shardPool, dt);
 }

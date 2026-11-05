@@ -3,19 +3,17 @@
 // pad and the quiet ambience. audio.js synthesized the music bar by bar (four
 // chords of three sines, 2.4 s bars; an octave up above intensity 0.3; 1.6 s
 // bars and a high triangle blip above 0.6 / 0.5) and looped low-passed noise
-// on its ambience bus; here each intensity band is rendered once into a loop
-// clip (a slice a frame, from a sine table: per-sample Math.sin is slow in the
-// native interpreter) and the bands cross-fade as the drop streak changes the
-// intensity. The ambience noise (low-passed at 240 Hz, gain 0.05) is a 4 s
-// seamless loop on the music bus — the runtime has no ambience bus — at the
-// old ambience-to-music ratio (0.5 / 0.6). The synthesized transients
-// audio.js played while a clip was still decoding are not ported (a live
-// synthesis graph makes clip loads fail on the web runtime): a clip still
+// on its ambience bus; here each intensity band renders once into a loop clip
+// (OfflineAudioContext, in onStart) and the bands cross-fade as the drop streak
+// changes the intensity. The ambience noise (low-passed at 240 Hz, gain 0.05)
+// is a 4 s seamless loop on the music bus — the runtime has no ambience bus —
+// at the old ambience-to-music ratio (0.5 / 0.6). The synthesized transients
+// audio.js played while a clip was still decoding are not ported: a clip still
 // loading is silent (so are its seeded pitch variants, which only the synth
-// used). The runtime's Options own the volumes and the mute.
-// Clips load once the mixer runs (natively at once, in a browser after the
-// first press), one at a time.
-import { context, createClip, loadClip, play as playClip, type AudioClip, type Sound } from "starhermit:audio";
+// used). The runtime's Options own the volumes and the mute. Everything loads
+// in onStart; only starting the loops waits for the mixer (in a browser, the
+// first press).
+import { context, createClip, loadClip, OfflineAudioContext, play as playClip, type AudioClip, type Sound } from "starhermit:audio";
 
 /** audio.js SFX. */
 const SFX = {
@@ -24,83 +22,65 @@ const SFX = {
 } as const;
 export type Sfx = keyof typeof SFX;
 const clips = new Map<string, AudioClip>();
-const queue: string[] = [];
-let loading = false;
-let wantClips = false;
 let suspended = false;
 
-export function loadSfx(): void { wantClips = true; }
 export function play(ev: Sfx): void {
   if (suspended) return;
   const name = SFX[ev];
   const clip = clips.get(name);
   if (!clip) return;
-  try { playClip(clip, { bus: "effects" }); } catch { clips.delete(name); if (!queue.includes(name)) queue.push(name); }
+  try { playClip(clip, { bus: "effects" }); } catch { /* the mixer is full this frame: skip it */ }
 }
 
 // -- the music bands and the ambience ------------------------------------------------------------
 const RATE = 22050;
-const TABLE_N = 4096;
-const SINE = new Float32Array(TABLE_N);
-for (let i = 0; i < TABLE_N; i++) SINE[i] = Math.sin((2 * Math.PI * i) / TABLE_N);
 const CHORDS = [[220.0, 277.18, 329.63], [196.0, 246.94, 293.66], [174.61, 220.0, 261.63], [196.0, 233.08, 311.13]];
-interface Band { bar: number; octave: number; gain: number; blip: boolean; data: Float32Array; pos: number; clip: AudioClip | null; voice: Sound | null }
+interface Band { bar: number; octave: number; gain: number; blip: boolean; clip: AudioClip | null; voice: Sound | null }
 const band = (bar: number, octave: number, intensity: number, blip: boolean): Band => ({
-  bar, octave, gain: 0.05 + intensity * 0.04, blip, data: new Float32Array(Math.round(bar * 4 * RATE)), pos: 0, clip: null, voice: null,
+  bar, octave, gain: 0.05 + intensity * 0.04, blip, clip: null, voice: null,
 });
 /** Intensity 0 (calm), 0.5 (octave up), 1 (fast bars and the blip): audio.js's thresholds 0.3, 0.5, 0.6. */
 const BANDS: Band[] = [band(2.4, 1, 0, false), band(2.4, 2, 0.5, false), band(1.6, 2, 1, true)];
-function renderBand(b: Band, count: number): boolean {
-  const n = b.data.length, barN = Math.round(b.bar * RATE);
-  const end = Math.min(n, b.pos + count);
-  for (let i = b.pos; i < end; i++) {
-    const k = Math.floor(i / barN), t = (i - k * barN) / RATE;
-    const chord = CHORDS[k % 4]!;
-    // linear ramp up to 30 % of the bar, then down to its end
-    const up = b.bar * 0.3;
-    const env = t < up ? t / up : Math.max(0, 1 - (t - up) / (b.bar - up));
-    let v = 0;
+/** One band: four bars, a linear ramp up to 30 % of each and down to its end, and the optional mid-bar blip. */
+async function renderBand(b: Band): Promise<AudioClip> {
+  const off = new OfflineAudioContext(1, Math.round(b.bar * 4 * RATE), RATE);
+  CHORDS.forEach((chord, k) => {
+    const t0 = k * b.bar;
+    const g = off.createGain();
+    g.gain.value = 0;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(b.gain, t0 + b.bar * 0.3);
+    g.gain.linearRampToValueAtTime(0, t0 + b.bar);
+    g.connect(off.destination);
     for (const f of chord) {
-      const ph = ((f * b.octave * i) / RATE) % 1;
-      v += SINE[Math.floor(ph * TABLE_N)]!;
+      const osc = off.createOscillator(); osc.frequency.value = f * b.octave;
+      osc.connect(g); osc.start(0); osc.stop(t0 + b.bar); // from 0: the old phases, sharp bars aside
     }
-    v *= env * b.gain;
     if (b.blip) {
-      const bt = t - b.bar * 0.5;
-      if (bt >= 0 && bt < 0.12) {
-        // triangle at the chord root × 4, 12 ms attack, exponential decay (blip gain 0.05)
-        const ph = ((chord[0]! * 4 * bt) % 1);
-        const tri = 1 - 4 * Math.abs(ph - 0.5);
-        const e = bt < 0.012 ? bt / 0.012 : Math.exp(-(bt - 0.012) * 60);
-        v += tri * e * 0.05;
-      }
+      // triangle at the chord root × 4, 12 ms attack, exponential decay (blip gain 0.05)
+      const bt = t0 + b.bar * 0.5;
+      const osc = off.createOscillator(); osc.type = "triangle"; osc.frequency.value = chord[0]! * 4;
+      const e = off.createGain();
+      e.gain.setValueAtTime(0, bt);
+      e.gain.linearRampToValueAtTime(0.05, bt + 0.012);
+      e.gain.setTargetAtTime(0, bt + 0.012, 1 / 60);
+      osc.connect(e).connect(off.destination);
+      osc.start(bt); osc.stop(bt + 0.12);
     }
-    b.data[i] = v;
-  }
-  b.pos = end;
-  return end >= n;
+  });
+  return createClip(await off.startRendering());
 }
-const AMB_N = RATE * 4;
-const amb = new Float32Array(AMB_N);
-let ambPos = 0, ambA = 0, ambB = 0, ambSeed = 0x2f6b;
-function renderAmbience(count: number): boolean {
-  const end = Math.min(AMB_N, ambPos + count);
-  const a = 1 - Math.exp((-2 * Math.PI * 240) / RATE);
-  for (; ambPos < end; ambPos++) {
-    ambSeed = (ambSeed * 1664525 + 1013904223) >>> 0;
-    const w = (ambSeed / 4294967296) * 2 - 1;
-    ambA += a * (w - ambA);
-    ambB += a * (ambA - ambB);
-    amb[ambPos] = ambB * 0.05 * 2.2; // two poles lose ~half the noise's level; the old biquad kept it
-  }
-  if (ambPos < AMB_N) return false;
-  // seamless loop: cross-fade the last 0.25 s into the start
-  const x = Math.round(RATE * 0.25);
-  for (let i = 0; i < x; i++) {
-    const k = i / x;
-    amb[i] = amb[i]! * k + amb[AMB_N - x + i]! * (1 - k);
-  }
-  return true;
+const AMB_MAKEUP = 1.486; // make-up to the old bed's rms (.0084)
+/** The ambience: white noise low-passed at 240 Hz. Filtered periodic noise is periodic once settled: no crossfade. */
+async function renderAmbience(): Promise<AudioClip> {
+  const settle = Math.round(0.25 * RATE);
+  const off = new OfflineAudioContext(1, settle + RATE * 4, RATE);
+  const noise = off.createNoise({ seed: 0x2f6b, seconds: 4 });
+  const lp = off.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 240;
+  const g = off.createGain(); g.gain.value = 0.05 * AMB_MAKEUP;
+  noise.connect(lp).connect(g).connect(off.destination); noise.start();
+  const r = await off.startRendering();
+  return createClip([r.getChannelData(0).slice(settle)], RATE);
 }
 const AMB_GAIN = 0.5 / 0.6;
 let ambClip: AudioClip | null = null;
@@ -122,39 +102,22 @@ export function setSuspended(on: boolean): void {
   for (const b of BANDS) try { if (on) b.voice?.fade(0, 0.2); } catch { /* gone */ }
 }
 
-/** Each frame: the clips once the mixer runs (one at a time), then the ambience and the music bands. */
+/** Loads every clip at once and renders the loops (onStart). */
+export function loadSfx(): void {
+  for (const name of new Set(Object.values(SFX))) {
+    loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => { console.warn(`sfx ${name}: ${e instanceof Error ? e.message : String(e)}`); });
+  }
+  const warn = (e: unknown): void => { console.warn(`audio: ${String(e)}`); };
+  renderAmbience().then((c) => { ambClip = c; }, warn);
+  for (const b of BANDS) renderBand(b).then((c) => { b.clip = c; }, warn);
+}
+
+/** Each frame, once the mixer runs and the music is wanted: the ambience and the music bands, one start a frame. */
 export function update(): void {
-  if (context.state !== "running") return;
-  if (wantClips) {
-    wantClips = false;
-    for (const n of Object.values(SFX)) if (!queue.includes(n)) queue.push(n);
-  }
-  if (!loading && queue.length) {
-    const name = queue.shift()!;
-    if (!clips.has(name)) {
-      loading = true;
-      loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); loading = false; }, (e: unknown) => {
-        console.warn(`sfx ${name}: ${e instanceof Error ? e.message : String(e)}`);
-        loading = false;
-      });
-    }
-    return;
-  }
-  if (loading || !musicWanted) return;
-  if (!ambClip) {
-    if (!renderAmbience(12000)) return;
-    try { ambClip = createClip([amb], RATE); } catch (e) { console.warn(`audio: ${String(e)}`); ambPos = 0; }
-    return;
-  }
+  if (context.state !== "running" || !musicWanted || !ambClip) return;
   if (!ambVoice) {
     try { ambVoice = playClip(ambClip, { bus: "music", gain: suspended ? 0 : AMB_GAIN, loop: true }); } catch { ambVoice = null; }
     return;
-  }
-  for (const b of BANDS) {
-    if (b.clip) continue;
-    if (!renderBand(b, 8000)) return;
-    try { b.clip = createClip([b.data], RATE); } catch (e) { console.warn(`audio: ${String(e)}`); b.pos = 0; }
-    return; // one band a frame (looping starts in separate frames)
   }
   for (const b of BANDS) {
     if (b.voice || !b.clip) continue;
