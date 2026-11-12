@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-export const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
+export const LOCALES = ['en-US', 'es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT', 'en-GB', 'es-ES', 'fr-CA', 'fr-BE', 'de-BE', 'en-SG', 'en-HK', 'en-BQ', 'es-CO', 'de-IT', 'fr-IT', 'es-CL', 'es-AR', 'es-EC', 'ja-JP', 'nl-BE', 'zh-SG', 'ms-SG', 'ta-SG', 'zh-HK', 'yue-HK', 'nl-NL', 'fi-FI', 'sv-FI', 'et-EE', 'id-ID', 'vi-VN', 'de-BR', 'da-DE', 'lb-BE', 'eu-FR', 'ca-FR', 'oc-FR', 'ca-IT', 'oc-IT', 'ru-FI', 'ca-ES', 'eu-ES', 'gl-ES', 'ru-EE', 'su-ID', 'km-VN', 'co-FR', 'sl-IT', 'fur-IT', 'bew-ID'];
 export const FULL = ['es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT'];
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'", hellip: '…', mdash: '—', larr: '←', rarr: '→' };
@@ -86,8 +86,8 @@ export function audit(tables, used) {
       const want = (k.match(/\{\w+\}/g) || []).sort().join();
       const got = (String(v).match(/\{\w+\}/g) || []).sort().join();
       if (want !== got) problems.push(`${loc} placeholders: ${k}`);
-      const tagsK = (k.match(/<\/?\w+/g) || []).sort().join();
-      const tagsV = (String(v).match(/<\/?\w+/g) || []).sort().join();
+      const tagsK = (k.match(/<\/?[A-Za-z][\w-]*(?=[\s/>])/g) || []).sort().join();
+      const tagsV = (String(v).match(/<\/?[A-Za-z][\w-]*(?=[\s/>])/g) || []).sort().join();
       if (tagsK !== tagsV) problems.push(`${loc} markup: ${k}`);
     }
   }

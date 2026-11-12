@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Spiral Drop on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (src/rules.js) and content
@@ -657,7 +658,7 @@ onUpdate((dt) => {
   if (app.caption && (t > app.caption.until || app.screen !== null)) app.caption = null;
 });
 const lerpAngle = (a: number, b: number, t: number): number => a + Rules.angleDelta(a, b) * t;
-onRender((interp) => {
+onRender(__l10nRender((interp) => {
   const wasPlaying = app.phase === "active" && app.screen === null;
   hudRects.length = 0;
   drawScreens();
@@ -689,4 +690,8 @@ onRender((interp) => {
     }
     render.update(view, frameDt || DT, f.width, f.height);
   });
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

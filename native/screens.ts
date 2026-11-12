@@ -1,3 +1,7 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
+import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
+// localization-runtime:attached
+import { openLocalizedOptions as __l10nOptions } from "./l10n/menu.ts";
 // The browser build's DOM shell (src/ui.js + index.html + css/style.css) as
 // starhermit:ui, built every frame over the tower: the play HUD (objective,
 // score, layer progress, the smash charge, the clock or rotation budget,
@@ -9,7 +13,18 @@
 // the window's logical size: portrait phones (≤ 640 px wide: bottom sheets,
 // smaller rotate buttons), short landscape (≤ 480 px tall: the HUD in two
 // side columns) and the rest (centred panels, 720 px wide from 1024 px).
-import { frame, openMenu } from "starhermit:engine";
+// The browser build's DOM shell (src/ui.js + index.html + css/style.css) as
+// starhermit:ui, built every frame over the tower: the play HUD (objective,
+// score, layer progress, the smash charge, the clock or rotation budget,
+// pause; the round rotate buttons with Undo and Hint between them, mirrored
+// for left-handed controls), the countdown, the cue captions, the toast, and
+// every screen (title, mode setup, journey map, practice, challenges, learn,
+// scores, how to play, settings, pause, results, the erase confirmation) as
+// a panel over the dimmed tower. The old media queries are layouts picked by
+// the window's logical size: portrait phones (≤ 640 px wide: bottom sheets,
+// smaller rotate buttons), short landscape (≤ 480 px tall: the HUD in two
+// side columns) and the rest (centred panels, 720 px wide from 1024 px).
+import { frame } from "starhermit:engine";
 import { bindings, requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
@@ -42,7 +57,7 @@ function textWidth(text: string, style: string, kind?: "button" | "heading"): nu
 /** Text up to `width` wide: one label when it fits, else a paragraph. */
 function para(text: string, width: number, cls = "text", id?: string): void {
   if (!text) return;
-  let u = ui.style(cls);
+  let u = ui.style(__l10nStyle(cls));
   if (id) u = u.id(id);
   if (textWidth(text, cls) <= width) u.label(text);
   else u.paragraph(text, Math.max(20, width));
@@ -57,11 +72,11 @@ function button(b: Btn): void {
   if (b.content) opts.content = b.content;
   else if (b.width != null && buttonWidth(b.text, style) > b.width) {
     const inner = b.width - 40;
-    opts.content = () => { ui.style(style === "big" ? "wrap-ink" : "wrap").paragraph(b.text, Math.max(20, inner)); };
+    opts.content = () => { ui.style(__l10nStyle(style === "big" ? "wrap-ink" : "wrap")).paragraph(b.text, Math.max(20, inner)); };
   } else if (b.name && b.name !== b.text) opts.content = () => { ui.label(b.text); };
   const st: ui.Style = {};
   if (b.width != null) st.width = b.width;
-  if (ui.style(style, st).id(b.id).button(b.name ?? b.text, opts) && fresh()) {
+  if (ui.style(__l10nStyle(style), __l10nStyle(st)).id(b.id).button(b.name ?? b.text, opts) && fresh()) {
     later(() => { sound("uiTap"); b.act(); });
   }
 }
@@ -90,7 +105,7 @@ export function drawScreens(): void {
 
 // ------------------------------------------------------------------ the HUD
 function chip(id: string, text: string, cls = "chip-text", tip?: string): void {
-  ui.row(id, () => { ui.style(cls).id(`${id}-t`).label(text, tip ? { tooltip: tip } : undefined); }, { style: "chip", align: "center" });
+  ui.row(id, () => { ui.style(__l10nStyle(cls)).id(`${id}-t`).label(text, tip ? { tooltip: tip } : undefined); }, { style: "chip", align: "center" });
 }
 function hud(L: Layout): void {
   const s = app.state!;
@@ -105,7 +120,7 @@ function hud(L: Layout): void {
   };
   const pauseBtn = (): void => {
     const r = ui.row("hud-pause-wrap", () => {
-      const res = ui.style("hud-btn").id("btn-pause").widget(T("Pause (Esc)"), {
+      const res = ui.style(__l10nStyle("hud-btn")).id("btn-pause").widget(T("Pause (Esc)"), {
         role: "button", size: { width: 44, height: 44 },
         draw: (rect, st) => {
           const k = st.scale, bw = 4 * k, bh = 16 * k, cx = rect.x + rect.width / 2, cy = rect.y + rect.height / 2;
@@ -213,11 +228,11 @@ function timerText(): string | null {
 }
 function countdown(L: Layout): void {
   const size = Math.max(64, Math.min(144, 0.18 * L.lw));
-  ui.place("countdown", "center", () => { ui.style("countdown", { text: { size } }).id("countdown-t").label(app.countdown!); });
+  ui.place("countdown", "center", () => { ui.style(__l10nStyle("countdown"), __l10nStyle({ text: { size } })).id("countdown-t").label(app.countdown!); });
 }
 function captionLine(L: Layout): void {
   ui.place("caption", { anchor: "bottom", y: L.land ? 8 : 108 }, () => {
-    ui.row("caption-box", () => ui.style("caption-text").id("caption-t").label(app.caption!.text), { style: "caption" });
+    ui.row("caption-box", () => ui.style(__l10nStyle("caption-text")).id("caption-t").label(app.caption!.text), { style: "caption" });
   });
 }
 function toastBox(L: Layout): void {
@@ -334,9 +349,9 @@ function setupPanel(w: number): void {
   para(info.title, w, "h2", "setup-h");
   para(info.description, w, "dim", "setup-desc");
   ui.row("setup-badges", () => {
-    ui.row("badge-rank", () => ui.style(info.ranked ? "badge-ranked-text" : "badge-dim-text").label(info.ranked ? T("Ranked") : T("Casual — not rated")), { style: info.ranked ? "badge-ranked" : "badge" });
-    ui.row("badge-dur", () => ui.style("badge-text").label("~" + info.duration), { style: "badge" });
-    if (info.assists) ui.row("badge-assist", () => ui.style("badge-text").label(T("Assists: {list}", { list: info.assists })), { style: "badge" });
+    ui.row("badge-rank", () => ui.style(__l10nStyle(info.ranked ? "badge-ranked-text" : "badge-dim-text")).label(info.ranked ? T("Ranked") : T("Casual — not rated")), { style: info.ranked ? "badge-ranked" : "badge" });
+    ui.row("badge-dur", () => ui.style(__l10nStyle("badge-text")).label("~" + info.duration), { style: "badge" });
+    if (info.assists) ui.row("badge-assist", () => ui.style(__l10nStyle("badge-text")).label(T("Assists: {list}", { list: info.assists })), { style: "badge" });
   }, { spacing: 6, align: "center" });
   para(T("Rules"), w, "h3", "setup-rules-h");
   ui.column("setup-rules", () => { info.rules.forEach((r, i) => para("• " + r, w - 20, "dim", `setup-rule-${i}`)); }, { spacing: 4, width: w, padding: { start: 20 } });
@@ -365,8 +380,8 @@ function journeyPanel(w: number, L: Layout): void {
             id: `stage-${i + 1}`, text: String(i + 1), name, style: st.mastery ? "stage-mastery" : "stage", width: cw, disabled: !ok,
             act: () => showSetup(journeySetup(i)),
             content: () => ui.column(`stage-${i + 1}-face`, () => {
-              ui.style("stage-n").label(String(i + 1));
-              ui.style("stars").label("★".repeat(stars) + "☆".repeat(Math.max(0, 3 - stars)));
+              ui.style(__l10nStyle("stage-n")).label(String(i + 1));
+              ui.style(__l10nStyle("stars")).label("★".repeat(stars) + "☆".repeat(Math.max(0, 3 - stars)));
             }, { spacing: 2, align: "center", width: cw - 10, height: cw - 10, justify: "center" }),
           });
         }
@@ -422,7 +437,7 @@ function scoresPanel(w: number): void {
   const tabs: [typeof d.tab, string][] = [["local", T("Local")], ["global", T("Global")], ["friends", T("Friends")]];
   ui.row("score-tabs", () => {
     for (const [k, label] of tabs) {
-      if (ui.style("ghost").id(`tab-${k}`).button(label, { selected: d.tab === k }) && fresh()) later(() => { sound("uiTap"); d.tab = k; });
+      if (ui.style(__l10nStyle("ghost")).id(`tab-${k}`).button(label, { selected: d.tab === k }) && fresh()) later(() => { sound("uiTap"); d.tab = k; });
     }
   }, { spacing: 6 });
   const rows: { name: string; score: number }[] = d.tab === "local" ? d.local.map((r) => ({ name: bestKeyName(r.key), score: r.score }))
@@ -437,9 +452,9 @@ function scoresPanel(w: number): void {
 }
 function kv(id: string, k: string, v: string, w: number, total = false): void {
   ui.row(id, () => {
-    ui.style(total ? "total-k" : "kv-k").label(k);
+    ui.style(__l10nStyle(total ? "total-k" : "kv-k")).label(k);
     ui.spacer();
-    ui.style(total ? "total-v" : "kv-v").id(`${id}-v`).label(v);
+    ui.style(__l10nStyle(total ? "total-v" : "kv-v")).id(`${id}-v`).label(v);
   }, { style: total ? "kv-total" : "kv", width: w, align: "center" });
 }
 
@@ -449,7 +464,7 @@ function keysFor(action: string): string {
   try { list = bindings(action).filter((b) => b.device === "keyboard").map((b) => GLYPH[b.label] ?? b.label); } catch { /* not yet */ }
   return [...new Set(list)].join(" / ");
 }
-function kbd(id: string, text: string): void { ui.row(id, () => ui.style("kbd-text").label(text), { style: "kbd" }); }
+function kbd(id: string, text: string): void { ui.row(id, () => ui.style(__l10nStyle("kbd-text")).label(text), { style: "kbd" }); }
 function card(id: string, title: string, w: number, body: () => void): void {
   ui.column(id, () => { para(title, w - 30, "strong", `${id}-h`); body(); }, { style: "rule-card", width: w, spacing: 4 });
 }
@@ -479,7 +494,7 @@ function toggleRow(id: string, label: string, on: boolean, w: number, set: (v: b
         const s = st.scale, box = 20 * s, bx = r.x + (r.width - box) / 2, by = r.y + (r.height - box) / 2;
         draw.roundRect(bx, by, box, box, 4, on ? token("ui-accent") : token("ui-bg-solid"));
         draw.strokeRoundRect(bx, by, box, box, 4, st.focused ? token("ui-accent") : token("ui-dim"), (st.focused ? 3 : 1.5));
-        if (on) draw.text("✓", bx + box / 2, by + 1 * s, { size: 16 * s, color: token("ui-ink"), align: "center", weight: "bold" });
+        if (on) draw.text("✓", bx + box / 2, by + 1 * s, __l10nDrawOptions({ size: 16 * s, color: token("ui-ink"), align: "center", weight: "bold" }));
       },
     });
     para(label, w - 46, "text", `${id}-label`);
@@ -492,7 +507,7 @@ function settingsPanel(w: number): void {
   para(T("Audio"), w, "h3", "set-audio-h");
   para(T("Volumes, mute, graphics quality, language, larger text, high contrast and reduced motion are in the StarHermit Options."), w, "dim", "options-note");
   flow("set-runtime", [
-    { id: "btn-options", text: T("Open Options"), act: () => openMenu() },
+    { id: "btn-options", text: T("Open Options"), act: () => __l10nOptions() },
     { id: "btn-rebind", text: T("Key bindings"), act: () => requestRebind() },
   ], w);
   toggleRow("set-captions", T("Captions for audio cues"), o.captions, w, (v) => platform.setOption("captions", v));
