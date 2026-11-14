@@ -1,5 +1,7 @@
 # Spiral Drop
 
+**[▶ Play Spiral Drop on StarHermit](https://dashboard.starhermit.com/play/af1071b6-2e02-4e23-89df-4d7a5d1e8b89)**
+
 Rotate a layered tower so a falling ball passes through safe gaps and avoids
 striped danger sectors. Chain drops to charge a smash. Reach the base.
 
