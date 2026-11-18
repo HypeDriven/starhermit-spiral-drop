@@ -88,14 +88,13 @@ function flow(label: string, list: Btn[], width: number, gap = 10): void {
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   const f = frame();
   if (app.state && app.phase !== "results") hud(L);
   if (app.countdown && !app.screen) countdown(L);
   if (app.caption && !app.screen) captionLine(L);
   panel(L);
-  toastBox(L);
   if (app.focusNext) {
     const age = f.frame - app.openedFrame;
     if (age >= 1) ui.setFocus(app.focusNext);
@@ -233,13 +232,6 @@ function countdown(L: Layout): void {
 function captionLine(L: Layout): void {
   ui.place("caption", { anchor: "bottom", y: L.land ? 8 : 108 }, () => {
     ui.row("caption-box", () => ui.style(__l10nStyle("caption-text")).id("caption-t").label(app.caption!.text), { style: "caption" });
-  });
-}
-function toastBox(L: Layout): void {
-  if (!app.toast) return;
-  const w = Math.min(L.lw * 0.8, 520);
-  ui.place("toast", { anchor: "top", y: 64 }, () => {
-    ui.column("toast-box", () => para(app.toast!.text, w - 38, "toast-text", "toast-t"), { style: "toast" });
   });
 }
 
@@ -568,4 +560,11 @@ function resultsPanel(w: number): void {
   list.push({ id: "btn-watch", text: T("Watch replay"), act: watchReplay });
   list.push(back(leaveToTitle, N("Menu")));
   footer(list, w);
+}
+
+export function drawScreens(): void {
+  if (app.screen !== "help") { drawScreensImmediate(); return; }
+  const actions = ["left","right","pause","undo","hint"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }

@@ -93,7 +93,7 @@ export function announce(text: string, assertive = false): void {
   spoken.push(text);
   spokenAssertive ||= assertive;
 }
-export function toast(text: string, ms = 2600): void { app.toast = { text, until: now() + ms / 1000 }; }
+export function toast(text: string, ms = 2600): void { ui.toast!(text, { duration: ms / 1000, position: "top", offset: 64, style: "toast", dismissible: false }); }
 export function caption(text: string): void { app.caption = { text, until: now() + 1.6 }; }
 const CAPTIONS: Partial<Record<audio.Sfx, string>> = {
   fallStart: N("Drop"), smash: N("Danger sector smashed"), danger: N("Danger sector — run over"), invalid: N("Action not available"),

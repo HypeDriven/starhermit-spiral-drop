@@ -27,12 +27,9 @@
 // at exposure 1.05, 0.95 for Paper Dawn → SMAA / FXAA) is the runtime's
 // renderer.ao / bloom / grade / antialias.
 import {
-  ACESFilmicToneMapping, OrthographicCamera, AdditiveBlending, BackSide, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry,
-  DirectionalLight, DoubleSide, ExtrudeGeometry, Fog, Group, HemisphereLight, Line, LineBasicMaterial, Mesh, MeshBasicMaterial,
-  MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PMREMGenerator, ParticleEmitter, PerspectiveCamera, PointLight,
-  Points, PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3,
-  renderer, scene, type Material, type Texture,
+  ACESFilmicToneMapping, OrthographicCamera, AdditiveBlending, BackSide, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight, DoubleSide, ExtrudeGeometry, Fog, Group, HemisphereLight, Line, LineBasicMaterial, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PMREMGenerator, PerspectiveCamera, PointLight, Points, PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
 import type { Layer, SimEvent, Theme } from "./game.ts";
 import type { Look } from "./quality.ts";
@@ -278,20 +275,20 @@ function buildRingView(v: RingView, layer: Layer, isRestRing: boolean): void {
 }
 
 // event particles (two tiers): native emitters, one colour each
-function makePool(cap: number, size: number, color: number, additive: boolean, seed: number): ParticleEmitter {
+function makePool(cap: number, size: number, color: number, additive: boolean, seed: number): GPUParticleEmitter {
   const soft = !!look?.detailed;
   const material = new PointsMaterial({
     size: soft ? size * 1.8 : size, color, transparent: true, opacity: 0.9, depthWrite: false,
     map: soft ? dotTex : null, blending: soft && additive ? AdditiveBlending : NormalBlending,
   });
-  const e = new ParticleEmitter({ capacity: Math.max(1, cap), material, seed, life: [0.5, 0.9], gravity: [0, -2.2, 0] });
+  const e = new GPUParticleEmitter({ capacity: Math.max(1, cap), material, seed, life: [0.5, 0.9], gravity: [0, -2.2, 0] });
   e.frustumCulled = false;
   scene.add(e);
   return e;
 }
-let puffPool: ParticleEmitter | null = null, shardPool: ParticleEmitter | null = null;
-function dropPool(p: ParticleEmitter | null): void { if (!p) return; scene.remove(p); p.dispose(); }
-function spawn(pool: ParticleEmitter | null, x: number, y: number, z: number, count: number, spread: number, up: number): void {
+let puffPool: GPUParticleEmitter | null = null, shardPool: GPUParticleEmitter | null = null;
+function dropPool(p: GPUParticleEmitter | null): void { if (!p) return; scene.remove(p); p.dispose(); }
+function spawn(pool: GPUParticleEmitter | null, x: number, y: number, z: number, count: number, spread: number, up: number): void {
   if (!pool) return;
   pool.set({ velocity: [0, up, 0], velocitySpread: [spread * 0.7, up * 0.5, spread * 0.7] });
   pool.burst(count, [x, y, z]);
