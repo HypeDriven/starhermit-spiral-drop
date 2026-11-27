@@ -1,6 +1,6 @@
 # Spiral Drop — Product and Game Specification
 
-**Document status:** running specification of the game as built: a StarHermit engine script game (engine 1.51.0, host API 1.51, `engine.minor=51`).
+**Document status:** running specification of the game as built: a StarHermit engine script game (engine 1.53.0, host API 1.53, `engine.minor=53`).
 **Game index:** 45  
 **Genre:** Rotation action puzzle  
 **Players:** 1 player; optional asynchronous score comparison  
@@ -64,7 +64,7 @@ Every transition has one owner and an explicit reason. Backgrounding pauses solo
 
 ### Implementation
 
-- `starhermit.txt` declares an engine script game: `engine.entry=native/main.ts`, `engine.version=1.51.0`, `engine.minor=51`, capabilities `platform,storage,clipboard`, the keyboard actions (`control.*`) and gamepad defaults (`engine.gamepad.*`), and `server=score-script.js`. Browsers open `index.html`, the loader `npm run package` (`starhermit package --web .`) writes with the file index `starhermit-files.json`; both are committed and regenerated after every change.
+- `starhermit.txt` declares an engine script game: `engine.entry=native/main.ts`, `engine.version=1.53.0`, `engine.minor=53`, capabilities `platform,storage,clipboard`, the keyboard actions (`control.*`) and gamepad defaults (`engine.gamepad.*`), and `server=score-script.js`. Browsers open `index.html`, the loader `npm run package` (`starhermit package --web .`) writes with the file index `starhermit-files.json`; both are committed and regenerated after every change.
 - The rules (`src/rules.js`: the 60 Hz deterministic simulation, commands, scoring, hints, replay envelopes) and content (`src/content.js`: five themes, the seeded layer generator, the 40 Journey stages, the Daily, three Practice presets, six Challenges, five lessons) are the browser build's UMD scripts, unchanged, loaded with `loadClassic`; `server.js` (local dev server and replay validator) and the node tests share them.
 - `native/main.ts` is the session state machine (title → setup → countdown → active ⇄ paused → results, plus replay), input, progression and lifecycle; `native/screens.ts` the HUD and every panel (`starhermit:ui`); `native/render.ts` the tower (`starhermit:scene`); `native/audio.ts` sound (`starhermit:audio`); `native/platform.ts` saves, options and the platform; `native/quality.ts` the graphics budgets per quality tier; `native/style.ts` the look (`tools/ui-style.css` → `assets/ui-style.json` with `npm run css`); `native/i18n.ts` the language. `src/progress.js` is the pure save model and the progression rules (merges, the old cloud doc, achievements, stars, streaks, bests); `src/lang.js` the translation lookup over `src/strings.js`.
 - **Time** is the runtime's fixed steps at 60 Hz, one rules tick a step. Each step applies the rotation held at that step (keys, pad, the round buttons or a drag) as `rotateStart` / `rotateStop` commands, then runs the tick. While a landing resolves (4 ticks) rotation changes wait for the next step instead of being refused. The countdown (“3”, “2”, “1”, “Drop!” 700 ms apart, play 550 ms after “Drop!”), the drag's 130 ms idle stop, captions (1.6 s) and toasts (2.6 s) count the same steps, so slow frames, pauses and a hidden window never change a run, and play scripts replay exactly. The tower is drawn between the last two steps (the runtime's interpolation), as the browser build drew it with its accumulator's alpha. Behind the menus an attract tower spins and drops every other step (the old 33 ms interval).
@@ -138,9 +138,9 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.51.0
+## Engine 1.53.0
 
-Browser play uses the WebGPU-only StarHermit 1.51.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.53.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
@@ -149,3 +149,5 @@ Toasts use native engine stacking, styling, accessibility and lifetime managemen
 Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
 
 Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
+
+On engine 1.53.0, browser play through WebGL 2 compiles a frame's shader programs together and holds that frame until they are linked, blends skinned meshes in one pass, reuses the window pass's depth, and uses a hardware WebGL 2 context when WebGPU's adapter is software.
