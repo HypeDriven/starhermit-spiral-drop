@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T09:42:01.489123+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-26T22:28:10.497921+00:00",
+    "coverArtUpdatedAt": "2026-11-27T17:07:44.386225+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-26T22:28:10.484951+00:00",
+      "deployedAt": "2026-11-27T17:07:44.376091+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.51.0",
+      "engineVersion": "1.53.0",
       "deployWarning": null
     },
     "description": "Rotate a layered tower to guide a falling ball through gaps while avoiding dangerous sectors.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-26T22:28:10.976Z",
-  "sourceCommit": "056d07d4bef7262ec45e0bc8d5754ec8d1509830",
-  "bytesReceived": 1519102,
-  "archiveSha256": "f9bb12d00634886d1c25af31242d97cf771c2bacd920a5e58300f1539702985b",
+  "publishedAt": "2026-11-27T17:07:44.548Z",
+  "sourceCommit": "8188b16c53bbb857aac80ee060d709850e4042df",
+  "bytesReceived": 1519078,
+  "archiveSha256": "c41784cd65504de337885ff7a31d01445dfc51bb094172a3e68356710da2e92e",
   "indexSha256": "cf3216f259a2865a2e6997ba8de3e74acf76f051ebb9fc47e7cfe1c85da5664c",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 1519102,
+    "bytesReceived": 1519078,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.51.0",
+    "engineVersion": "1.53.0",
     "deployWarning": null
   },
   "liveVerification": {
