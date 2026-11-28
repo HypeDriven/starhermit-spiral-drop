@@ -107,13 +107,22 @@ export function loadSfx(): void {
   for (const name of new Set(Object.values(SFX))) {
     loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => { console.warn(`sfx ${name}: ${e instanceof Error ? e.message : String(e)}`); });
   }
-  const warn = (e: unknown): void => { console.warn(`audio: ${String(e)}`); };
-  renderAmbience().then((c) => { ambClip = c; }, warn);
-  for (const b of BANDS) renderBand(b).then((c) => { b.clip = c; }, warn);
 }
 
 /** Each frame, once the mixer runs and the music is wanted: the ambience and the music bands, one start a frame. */
+let __bedsStarted = false;
+function startBeds(): void {
+  if (__bedsStarted) return;
+  __bedsStarted = true;
+  void (async () => {
+    const warn = (e: unknown): void => { console.warn(`audio: ${String(e)}`); };
+    renderAmbience().then((c) => { ambClip = c; }, warn);
+    for (const b of BANDS) renderBand(b).then((c) => { b.clip = c; }, warn);
+  })();
+}
+
 export function update(): void {
+  startBeds();
   if (context.state !== "running" || !musicWanted || !ambClip) return;
   if (!ambVoice) {
     try { ambVoice = playClip(ambClip, { bus: "music", gain: suspended ? 0 : AMB_GAIN, loop: true }); } catch { ambVoice = null; }
